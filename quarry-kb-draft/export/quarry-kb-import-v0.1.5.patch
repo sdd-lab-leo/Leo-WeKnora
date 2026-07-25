@@ -1,0 +1,1920 @@
+From c8c45b698ba4c0a50d8373b70ed07b1ebac6fb57 Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Sat, 25 Jul 2026 23:14:23 +0000
+Subject: [PATCH] docs: import v0.1.5 product spec and HTML prototype
+
+Add the Quarry KB requirements-layer product specification and the
+static Ask/Knowledge/Admin mock prototype under docs/, and link them
+from the repository README for review and SDD input.
+---
+ README.md                                     |   11 +-
+ docs/01-requirements/.gitkeep                 |    0
+ .../quarry-kb-product-spec-v0.1.md            |  505 +++++++
+ docs/prototypes/README.md                     |   39 +
+ docs/prototypes/index.html                    | 1293 +++++++++++++++++
+ 5 files changed, 1847 insertions(+), 1 deletion(-)
+ delete mode 100644 docs/01-requirements/.gitkeep
+ create mode 100644 docs/01-requirements/quarry-kb-product-spec-v0.1.md
+ create mode 100644 docs/prototypes/README.md
+ create mode 100644 docs/prototypes/index.html
+
+diff --git a/README.md b/README.md
+index 8467900..86092a4 100644
+--- a/README.md
++++ b/README.md
+@@ -24,10 +24,18 @@ Quarry KB is greenfield. It does not fork WeKnora. Atlas Knowledge Hub is a diff
+ | [docs/00-context/handoff-playbook.md](docs/00-context/handoff-playbook.md) | Execution-manifest hand-off procedure |
+ | [docs/00-context/checklists/sdd-generation-gate.md](docs/00-context/checklists/sdd-generation-gate.md) | Skill-chain evidence checklist |
+ | [docs/00-context/product-positioning.md](docs/00-context/product-positioning.md) | Product boundaries vs Atlas / WeKnora |
++| [docs/01-requirements/quarry-kb-product-spec-v0.1.md](docs/01-requirements/quarry-kb-product-spec-v0.1.md) | v0.1 product specification (requirements input for slice SDD) |
++| [docs/prototypes/index.html](docs/prototypes/index.html) | Static HTML prototype (mock, no backend) |
+ | [docs/00-context/decisions/](docs/00-context/decisions/) | Architecture Decision Records |
+ 
+ Non-trivial or user-facing changes must update the SDD chain before implementation. No approved slice means no feature code.
+ 
++Open the prototype locally with any browser:
++
++```sh
++open docs/prototypes/index.html
++```
++
+ ## Intended Stack (documented, not scaffolded yet)
+ 
+ - Frontend: Vue 3 + Vite + TypeScript + Pinia (`frontend/`)
+@@ -45,13 +53,14 @@ Non-trivial or user-facing changes must update the SDD chain before implementati
+ .claude/skills/          Claude Code mirror of skills
+ .opencode/commands/      OpenCode /sdd router
+ docs/00-context/         Durable context, profile, registry, ADRs, hand-off
+-docs/01-requirements/    Requirements slices
++docs/01-requirements/    Requirements input (product spec) + later slice requirements
+ docs/02-user-stories/    User stories
+ docs/03-spec/            Specifications
+ docs/04-architecture/    Architecture / data flow / data model
+ docs/05-design/          Design + API contracts
+ docs/06-tasks/           Implementation tasks
+ docs/07-prompts/         Prompt notes
++docs/prototypes/         Static HTML mock prototypes (no backend)
+ docs/reviews/            Review reports
+ docs/standards/          Frontend / backend development standards
+ docs/lessons/            Inherited + observed lessons
+diff --git a/docs/01-requirements/.gitkeep b/docs/01-requirements/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/docs/01-requirements/quarry-kb-product-spec-v0.1.md b/docs/01-requirements/quarry-kb-product-spec-v0.1.md
+new file mode 100644
+index 0000000..14bec1d
+--- /dev/null
++++ b/docs/01-requirements/quarry-kb-product-spec-v0.1.md
+@@ -0,0 +1,505 @@
++# Quarry KB Product Specification v0.1
++
++## Document Control
++
++| Field | Value |
++|---|---|
++| Version | 0.1.5 |
++| Status | Draft |
++| Layer | Requirements input (`docs/01-requirements/`) |
++| Owner | Product owner (TBD) |
++| Language | English (per `PROJECT_RULES.md`) |
++| Related | `docs/00-context/product-positioning.md`, ADR-0002, `docs/standards/frontend.md`, `docs/standards/backend.md` |
++| Prototype | `docs/prototypes/index.html` (mock, no backend) |
++
++This document defines what v0.1 must deliver. It is the upstream input for slice SDD generation. It does not replace slice requirements, spec, architecture, design, or tasks.
++
++### Revision History
++
++| Rev | Change |
++|---|---|
++| 0.1 | Initial specification |
++| 0.1.1 | Resolved D-01 (internal chat gateway), D-02 (OCR in scope), D-03 (no external embedding). |
++| 0.1.2 | Resolved D-04 (embedding via internal gateway API) and D-05 (OCR via gateway multimodal). Closed OQ-07 / OQ-08. |
++| 0.1.3 | Revised D-01: chat/completion may use the internal gateway **or** configured public OpenAI-compatible providers (e.g. DeepSeek). Embedding and OCR remain intranet-gateway-only. Documented the Ask-time data egress implication. |
++| 0.1.4 | Resolved OQ-10 as D-06: multiple public chat providers may be enabled; any authenticated user can switch the chat provider per Ask. |
++| 0.1.5 | Added D-07: per-surface degradation when the internal gateway is unavailable (Ask / Upload / Browse). |
++
++---
++
++## 1. Product Positioning
++
++Quarry KB is a department-scale living knowledge workbench for intranet teams (target: one department of about 60 people).
++
++Value chain:
++
++```text
++Documents -> Retrievable knowledge -> Cited Q&A -> (later) Agent -> (later) Wiki
++```
++
++v0.1 delivers only the first three stages. Agent reasoning and Wiki distillation are deliberately deferred so the team can validate answer quality, ingestion reliability, and daily usefulness first.
++
++Quarry KB is greenfield. It does not fork WeKnora and is not a rebrand of Atlas Knowledge Hub (which targets document conversion and SME review). Quarry KB targets retrieval, answering, and knowledge evolution.
++
++### 1.1 Problem Statement
++
++Department knowledge is scattered across handbooks, process documents, meeting notes, and exported specifications. People re-ask the same questions, answers depend on who is available, and new joiners cannot find authoritative content. Existing wikis are stale and not searchable in a question-oriented way.
++
++### 1.2 v0.1 Product Promise
++
++A colleague can ask a question in natural language and receive an answer that is grounded in uploaded department documents, with visible citations they can open and verify.
++
++### 1.3 Non-Goals For v0.1
++
++Quarry KB v0.1 is not a general chatbot, not a document management system, not a company-wide platform, and not a replacement for the official records system.
++
++---
++
++## 2. Users And Roles
++
++### 2.1 Personas
++
++| Persona | Need |
++|---|---|
++| Team member (majority) | Ask questions, trust answers, open the source |
++| Knowledge maintainer | Upload and curate documents, fix bad parsing |
++| Department admin | Manage accounts and roles, watch adoption |
++| Pilot sponsor | See whether the tool reduces repeated questions |
++
++### 2.2 Role Capability Matrix
++
++| Capability | Admin | Editor | Viewer |
++|---|---|---|---|
++| Log in | Yes | Yes | Yes |
++| Ask questions and view citations | Yes | Yes | Yes |
++| Switch chat provider / model on Ask | Yes | Yes | Yes |
++| View own session history | Yes | Yes | Yes |
++| Browse knowledge list | Yes | Yes | Yes |
++| Open document detail and chunks | Yes | Yes | Read-only |
++| Upload documents | Yes | Yes | No |
++| Delete documents | Yes | Yes | No |
++| Reindex documents | Yes | Yes | No |
++| Manage users and roles | Yes | No | No |
++| Configure chat providers (incl. public DeepSeek etc.) | Yes | No | No |
++| View minimal audit records | Yes | No | No |
++
++Role vocabulary is shared by frontend and backend (`Admin`, `Editor`, `Viewer`) as defined in the standards documents.
++
++---
++
++## 3. Platform Decisions
++
++These decisions are settled and constrain every downstream slice. Each requires an ADR in the destination repository before implementation.
++
++| ID | Decision | Consequence |
++|---|---|---|
++| D-01 | Chat/completion uses a **configurable OpenAI-compatible provider list**. Supported destinations include the company **internal model gateway** and **public providers** such as DeepSeek (and other Admin-configured OpenAI-compatible endpoints). | The chat adapter is provider-agnostic (`base_url` + API key + model id). An Admin can register providers and choose a system default. Enabling a public chat provider means Ask-time prompts—including retrieved document snippets—may leave the intranet. |
++| D-02 | Scanned and image-based documents **are in scope**; OCR is required. | Ingestion needs an OCR-capable parse path, a longer processing budget, per-document parse-mode reporting, and quality expectations that differ from native text. |
++| D-03 | Document text **must not** be sent to any external embedding service. | All **embedding** traffic stays inside the intranet perimeter. This does **not** by itself prevent Ask-time snippet egress when a public chat provider is selected (see D-01 warning below). |
++| D-04 | Embeddings are produced through the **internal gateway embedding API** (not a locally hosted embedding process on the Quarry host). | Vector dimension is dictated by the gateway embedding model; changing it requires a re-index migration. Compose does not need an on-host embedding container. |
++| D-05 | OCR for scanned/image pages is performed through the **internal gateway multimodal** capability (page images or PDFs sent to the gateway OCR/VLM path). | The parse adapter extracts pages, calls the gateway multimodal OCR endpoint, and never uses a public OCR SaaS or a separate on-host OCR stack in v0.1. Gateway latency and multimodal rate limits constrain NFR-04a. |
++| D-06 | **Multiple public chat providers** may be enabled at once, and **any authenticated user** (Admin / Editor / Viewer) may switch the chat provider on the Ask screen for each question. | Ask UI includes a provider/model selector listing all enabled providers. The Admin-configured default is preselected for new sessions; the user's last choice may be remembered in the browser/session. Provider credentials stay Admin-only—users only see display names. |
++| D-07 | When the **internal model gateway** is unavailable, the product **degrades by surface** instead of going fully offline: **Browse stays fully available**; **Upload still accepts files** but ingest may stall or fail with a clear reason; **Ask keeps history and keyword retrieval**, errors clearly when the selected chat provider is the down gateway (and invites switching to another enabled provider), and never fabricates an answer. | Downstream slices must implement the user-visible states in §6.4. No silent auto-failover of chat provider. Vector search and OCR/embedding ingest depend on the gateway and must surface degraded/failed states. |
++
++### 3.1 Data-egress warning (Ask vs ingest)
++
++| Path | Allowed destinations | What leaves Quarry |
++|---|---|---|
++| Embedding (ingest) | Internal gateway only (D-03, D-04) | Chunk text → intranet only |
++| Multimodal OCR (ingest) | Internal gateway only (D-05) | Page images → intranet only |
++| Chat/completion (Ask) | Internal gateway **or** configured public providers (D-01) | User question + **retrieved snippets** → selected provider |
++
++If an Admin enables DeepSeek (or another public chat endpoint), department document excerpts used as RAG context will be sent to that provider during Ask. This is an accepted product trade-off for model quality/flexibility; it must be visible in Admin configuration UX (warning copy), not hidden.
++
++### 3.2 Derived Constraints
++
++- Embedding and OCR remain intranet-gateway-only even when public chat is enabled.
++- Chat may egress to the public internet when an Admin enables a public provider **and** a user selects it (or it is the default).
++- Multiple public providers may be enabled concurrently (D-06); there is no DeepSeek-only limit.
++- The recommended system default for the pilot remains the internal gateway; public providers are Admin opt-in, then user-selectable.
++- Users never see or edit API keys; they only choose among enabled provider display names.
++- Embedding model id + dimension are configuration values; changing them requires a documented reindex.
++- Multimodal OCR work is asynchronous and must not block interactive question answering.
++- Provider credentials are stored as secrets; never committed to Git or returned by APIs.
++- Internal-gateway outage must not take down Browse; see D-07 and §6.4 for Ask/Upload degradation.
++
++## 4. Scope
++
++### 4.1 In Scope (v0.1)
++
++1. Password-based authentication with JWT sessions; accounts created by an Admin.
++2. One department knowledge collection (no multi-workspace, no per-user private collections).
++3. Document upload for Markdown, plain text, PDF (including scanned / image-based), and DOCX.
++4. Ingestion pipeline with OCR for pages that lack an extractable text layer; status visible as queued, parsing, indexed, or failed.
++5. Chunking plus embedding storage in PostgreSQL with pgvector; embeddings from the **internal gateway embedding API** only.
++6. Chat/completion via configurable OpenAI-compatible providers (internal gateway and/or public providers such as DeepSeek); embedding and multimodal OCR remain on the **internal gateway** only.
++7. Admin configuration of **multiple** chat providers (base URL, API key, model id, enable/disable, system default), with an explicit warning when a public provider is enabled.
++8. Ask-time chat provider switcher for all authenticated users (lists enabled providers; remembers last choice when practical).
++9. Hybrid retrieval (keyword plus vector) with fused ranking.
++10. Answer generation that must include citations to retrieved chunks.
++11. Source inspection: open the cited snippet and its parent document.
++12. Personal session history (a user sees only their own sessions).
++13. Minimal admin surface: user list, role assignment, activate/deactivate, chat-provider settings.
++14. Minimal audit trail for upload, delete, reindex, role change, and chat-provider configuration changes.
++15. Documented degradation when the internal gateway is unavailable: Browse stays up; Upload accepts then fails ingest clearly; Ask errors or keyword-falls-back without silent provider switch (§6.4).
++
++### 4.2 Out Of Scope (v0.1)
++
++| Deferred item | Reason |
++|---|---|
++| Agent / ReAct tool loop | Validate grounded answering quality first |
++| Wiki distillation and knowledge graph | Depends on stable ingestion and trusted answers |
++| Company SSO | Phase 2 per ADR-0002; `external_subject` is reserved from day one |
++| Multiple knowledge bases / workspaces | Single department pilot does not need isolation yet |
++| IM channels (WeCom, Feishu, Slack) | Web-first validation |
++| Website embed widget / public product API keys | No external product integration in pilot |
++| Public / third-party providers for **embedding** or **OCR** | Forbidden by D-03 / D-04 / D-05 |
++| On-host embedding or OCR containers | Forbidden by D-04 / D-05 for v0.1 |
++| Object storage backend (MinIO/S3) | Local disk volume is sufficient for the pilot |
++| Streaming token output | Nice to have; not an acceptance blocker for v0.1 |
++| Shared or team-visible sessions | Privacy expectations unclear in pilot |
++| Per-user free-form entry of arbitrary public model endpoints / API keys | v0.1 limits provider **setup** to Admin-configured entries; users may only **select** among enabled providers |
++
++Deferring an item does not mean designing against it. Public **chat** providers are allowed under D-01; public **embedding/OCR** remain prohibited.
++
++---
++
++## 5. Functional Requirements
++
++Requirement IDs are stable and should be referenced by downstream slice documents.
++
++### 5.1 Authentication And Accounts
++
++| ID | Requirement |
++|---|---|
++| FR-01 | A user can log in with account identifier and password and receives a session token. |
++| FR-02 | Passwords are stored only as hashes; plaintext passwords are never stored or logged. |
++| FR-03 | An Admin can create, deactivate, and reactivate accounts. |
++| FR-04 | An Admin can assign exactly one role per account from `Admin`, `Editor`, `Viewer`. |
++| FR-05 | A deactivated account cannot log in and its existing sessions stop being accepted. |
++| FR-06 | The user record reserves an external identity field for later SSO mapping without schema redesign. |
++| FR-07 | Authorization is enforced server-side; frontend guards are a usability layer only. |
++
++### 5.2 Knowledge Ingestion
++
++| ID | Requirement |
++|---|---|
++| FR-10 | An Editor or Admin can upload one or more files of type Markdown, TXT, PDF, or DOCX. |
++| FR-11 | The system rejects unsupported types and oversize files with an actionable message. |
++| FR-12 | Each uploaded document records title, original filename, type, size, uploader, and upload time. |
++| FR-13 | Binary content is stored on a server volume path; the database stores metadata and path only. |
++| FR-14 | Ingestion produces text content, chunks, and embeddings for retrieval. |
++| FR-14a | When a PDF page has no extractable text layer, the parser sends that page (or document) to the **internal gateway multimodal OCR** path and records that OCR was used for that document (or page range). |
++| FR-14b | Embeddings are produced only via the **internal gateway embedding API**; the system never calls a public embedding API and does not run a local embedding server in v0.1. |
++| FR-14c | Chat/completion calls are issued through the configured OpenAI-compatible chat provider (internal gateway and/or public providers such as DeepSeek). |
++| FR-14d | Chat provider entries, embedding gateway settings, and multimodal OCR path are configuration values. SDKs must not hard-code a single vendor; public chat is opt-in via Admin configuration. |
++| FR-14e | An Admin can create, update, disable, and select the system-default chat provider (`name`, `base_url`, `api_key`, `model_id`). Multiple public providers may be enabled at the same time. |
++| FR-14f | When saving or enabling a chat provider whose `base_url` is outside the company intranet allowlist, the Admin UI must show a warning that Ask-time retrieved document snippets may leave the intranet. |
++| FR-14g | Embedding and OCR configuration accept only intranet gateway endpoints; attempts to point them at public providers are rejected. |
++| FR-14h | Any authenticated user can select an enabled chat provider on the Ask screen before sending a question; the selection applies to that Ask (and may persist as the user's preference). |
++| FR-14i | The Ask provider selector shows only enabled providers' display names (and optional model label). It never exposes API keys or editable base URLs to non-Admin users. |
++| FR-14j | If the user has no stored preference, the system default provider is preselected. If the previously selected provider was disabled, the UI falls back to the system default and notifies the user. |
++| FR-15 | Document status is observable as `queued`, `parsing`, `indexed`, or `failed`. |
++| FR-16 | A failed document shows a human-readable failure reason (including OCR/parse failures). |
++| FR-17 | An Editor or Admin can reindex a document without re-uploading it. |
++| FR-18 | An Editor or Admin can delete a document; its chunks and embeddings are removed from retrieval. |
++| FR-19 | A user can view a document's metadata, parse mode (native text vs OCR), and a preview of its chunks. |
++| FR-20 | The knowledge list supports text search by title and filtering by status. |
++| FR-21 | Upload acceptance does not require the internal gateway to be healthy: valid files are stored and a document row is created even when embedding/OCR are unavailable. |
++| FR-22 | When ingest cannot complete because the gateway embedding or multimodal OCR path is unavailable, the document ends in `failed` (or remains visibly stalled in `parsing` with a timeout path to `failed`) with a human-readable reason such as "Internal gateway unavailable — retry / reindex later". |
++| FR-23 | Browse (knowledge list, document detail, chunk preview, already-indexed content) does not call the internal gateway and remains available during a gateway outage. |
++
++### 5.3 Ask (Retrieval And Answering)
++
++| ID | Requirement |
++|---|---|
++| FR-30 | Any authenticated user can submit a natural-language question. |
++| FR-31 | Retrieval combines keyword matching and vector similarity into a single fused ranking. |
++| FR-32 | The answer must cite the chunks it relied on using stable inline markers. |
++| FR-33 | Each citation exposes document title, location label (page or chunk ordinal), and a snippet. |
++| FR-34 | A user can open a citation to see the fuller source context. |
++| FR-35 | When retrieval finds no sufficiently relevant content, the system states that the knowledge base has no basis for an answer instead of producing an unsupported answer. |
++| FR-36 | Model or retrieval failures produce a clear error state, not a fabricated answer. |
++| FR-37 | Questions and answers are persisted into a session with timestamps. |
++| FR-38 | A user can see, reopen, and rename their own sessions. |
++| FR-39 | A user cannot read another user's sessions. |
++| FR-40 | The Ask interface exposes only RAG mode in v0.1; Agent mode is visible but disabled and clearly labeled as later. |
++| FR-41 | Each assistant answer records which chat provider/model generated it (for transparency in the session UI and support debugging). |
++| FR-42 | When the selected provider is public, the Ask composer shows a persistent short notice that retrieved snippets may leave the intranet (in addition to the Admin enablement warning). |
++| FR-43 | If the selected chat provider is the internal gateway and that gateway is unavailable, Ask shows a clear error with retry and, when other enabled providers exist, a prompt to switch provider. The system must not silently auto-switch providers. |
++| FR-44 | If vector retrieval cannot run because the gateway embedding path is unavailable, Ask falls back to **keyword-only retrieval** and shows a short "semantic search unavailable" notice. If keyword retrieval also finds no basis, FR-35 applies. |
++| FR-45 | Session list, reopen, and read-only viewing of prior answers remain available during a gateway outage (no new successful answer is required for Browse-of-history). |
++
++### 5.4 Administration And Audit
++
++| ID | Requirement |
++|---|---|
++| FR-50 | An Admin can list users with role and status. |
++| FR-51 | Role changes take effect on the next authorization check. |
++| FR-52 | The system records audit entries for upload, delete, reindex, account creation, role change, account status change, and chat-provider create/update/disable/default-change. |
++| FR-53 | An audit entry records actor, action, target, and timestamp. |
++| FR-54 | Audit records are readable by Admin only in v0.1 (list view is sufficient; no export required). |
++
++---
++
++## 6. Key Flows
++
++### 6.1 Ingest Flow
++
++```text
++Editor selects files
++  -> validation (type, size)
++  -> stored on volume + metadata row created (status: queued)
++  -> extract native text
++      -> if page/document has no text layer
++         -> render page image(s)
++         -> gateway multimodal OCR (D-05)
++  -> chunk
++  -> embed via gateway embedding API (D-04)
++  -> index (status: indexed)
++```
++
++Failure at any stage sets status `failed` with a reason and keeps the original file for retry. Reindex restarts from parse. Gateway multimodal OCR and embedding calls run in the ingest worker path so interactive Ask traffic is not blocked.
++
++### 6.2 Ask Flow
++
++```text
++User question
++  -> hybrid retrieval over indexed chunks
++  -> relevance check
++      -> insufficient  -> "no basis in knowledge base" response (FR-35)
++      -> sufficient    -> answer generation via the **selected chat provider** (D-01) with citations
++                         (if provider is public: question + retrieved snippets egress)
++  -> persist question + answer + citations to session
++  -> user can expand sources and open the document
++```
++
++### 6.3 Empty And Error States
++
++| State | Expected behavior |
++|---|---|
++| Knowledge base empty | Ask screen guides the user to ask an Editor to upload content |
++| No relevant chunks | Explicit "no basis" answer, no invented content |
++| Selected chat provider unavailable | Error banner with retry; question is not silently dropped; if other providers are enabled, invite the user to switch (no silent auto-switch) |
++| Gateway embedding unavailable | Ingest fails or times out to `failed` with a clear reason (FR-22); Ask uses keyword-only retrieval with a visible notice (FR-44) |
++| Gateway multimodal OCR failed / timed out | Document status `failed` (or partial failure reason); Editor can reindex when the gateway recovers |
++| Document parsing failed | Visible failure reason plus reindex action for Editors |
++| Permission denied | Non-destructive denial state, no partial data leakage |
++| Public chat provider misconfigured / invalid key | Clear Admin-facing and user-facing error; do not fall back silently to another provider without configuration |
++
++### 6.4 Internal-gateway degradation (user-visible)
++
++This section locks what users see when the **internal model gateway** is down or unreachable. "Gateway" here covers the intranet paths used for **chat (when selected)**, **embedding**, and **multimodal OCR**. Public chat providers are independent and may still work.
++
++#### 6.4.1 Per-surface summary
++
++| Surface | Depends on gateway? | Degradation strategy | User-visible outcome |
++|---|---|---|---|
++| **Browse** (knowledge list, document detail, chunk preview, session history) | No | **No degradation** for already-stored data | Screens load normally. Indexed documents and past answers remain readable. Optional non-blocking notice for Editors/Admins: "Internal gateway unavailable — new OCR/embedding ingest may fail." |
++| **Upload** | Yes for ingest completion (embed + OCR); **No** for accepting the file | **Accept then stall/fail** | Upload dialog still works. File is stored; document appears in the list as `queued` → `parsing`, then `failed` with reason if embed/OCR cannot complete. Editor can reindex after recovery. Native-text extract may finish locally, but indexing waits on embedding. Scanned PDFs fail at OCR. |
++| **Ask** (new question) | Partial: vector half of hybrid retrieval; chat only if Internal Gateway is selected | **Partial continue + explicit error** | See §6.4.2. Never invent an answer. Never silent provider failover. |
++
++#### 6.4.2 Ask detail (what the user sees)
++
++| Condition | What the user sees | What still works | What does not |
++|---|---|---|---|
++| Selected provider = **Internal Gateway**, gateway down | Error in the answer area: "Internal gateway is unavailable. Retry, or switch to another enabled model." Retry button + provider selector remain usable. | Session list; prior messages; switching to a public provider | New answer from the internal gateway |
++| Selected provider = **public**, gateway down (chat path OK) | Normal answer flow via the public provider. If embedding/vector path is also down: short notice "Semantic search unavailable — using keyword match only." Citations still required when chunks are found. | Ask with keyword retrieval + public chat; Browse | Vector similarity ranking until gateway recovers |
++| Selected provider = **public**, but that public provider is also down | Provider-specific error with retry; invite switch to another enabled provider | Browse; other providers if healthy | Answer from the broken provider |
++| Gateway down and **no other chat provider** enabled | Same internal-gateway error; no switch option. Copy may say "Ask is unavailable until the gateway recovers or an Admin enables another model." | Browse; Upload accept; session history | New cited answers |
++| Retrieval finds nothing (even keyword-only) | FR-35 "no basis" — not a gateway error | — | Fabricated answer |
++
++#### 6.4.3 Upload detail (what the user sees)
++
++| Step | Gateway down? | User-visible state |
++|---|---|---|
++| Choose files / validation | Irrelevant | Same as healthy: type/size errors only |
++| Confirm upload | Irrelevant | Success toast / document row created (`queued`) |
++| Native text extract | Usually local — still runs | Status `parsing` |
++| OCR (scanned pages) | Required | Stays `parsing` then `failed`: "Internal gateway multimodal OCR unavailable" |
++| Embedding | Required | Stays `parsing` then `failed`: "Internal gateway embedding unavailable" |
++| After recovery | — | Editor/Admin uses **Reindex** (no re-upload required) |
++
++Upload must not show a blocking "gateway down — cannot upload" that prevents storing the file. A soft banner on Knowledge for Editors is allowed: "Internal gateway unavailable — new documents may fail to index."
++
++#### 6.4.4 Browse detail (what the user sees)
++
++| Action | During gateway outage |
++|---|---|
++| Open Knowledge list / filter / search by title | Works |
++| Open document detail, chunk preview, parse mode, failure reason | Works |
++| Open citations from an old answer to a still-indexed document | Works |
++| Delete document / change roles / view audit (authorized users) | Works (local app + DB only) |
++| Reindex | Allowed to enqueue; will succeed only after gateway recovers (same failure reasons as upload if still down) |
++
++#### 6.4.5 Non-negotiables during outage
++
++1. Do not fabricate answers to hide a gateway failure.
++2. Do not silently switch the user's selected chat provider.
++3. Do not send embedding or OCR traffic to a public fallback.
++4. Do not wipe or hide already-indexed knowledge because the gateway is down.
++
++---
++
++## 7. Domain Concepts
++
++Conceptual model only. Physical schema belongs to slice data-model documents.
++
++| Concept | Purpose | Key attributes (conceptual) |
++|---|---|---|
++| User | Identity and authorization | identifier, display name, role, status, password hash, reserved external identity |
++| Document | Ingested source artifact | title, source filename, type, size, uploader, status, parse mode (`native` / `ocr` / `mixed`), failure reason, timestamps |
++| Chunk | Retrievable unit derived from a document | document reference, ordinal, text, location label, embedding (gateway embedding API) |
++| Session | A user's conversation container | owner, title, timestamps |
++| Message | A question or answer turn | session reference, role, content, timestamp |
++| Citation | Link from an answer to a chunk | message reference, chunk reference, marker, snippet |
++| Audit Entry | Traceability of sensitive actions | actor, action, target type, target id, timestamp |
++
++---
++
++## 8. Non-Functional Requirements
++
++| ID | Requirement |
++|---|---|
++| NFR-01 | Ten concurrent users asking questions must not cause visible degradation of the web interface. |
++| NFR-02 | Target first visible answer content within five seconds under normal latency of the **selected** chat provider. |
++| NFR-03 | Maximum single upload size is 50 MB. |
++| NFR-04 | A typical native-text document (under 100 pages) reaches `indexed` within five minutes of upload. |
++| NFR-04a | A typical OCR document (under 50 pages of scanned content) reaches `indexed` within thirty minutes under normal gateway multimodal latency, without blocking Ask for other users. |
++| NFR-05 | The pilot deployment runs on a single intranet host using Docker Compose, with no on-host embedding or OCR containers in v0.1. Egress to public **chat** providers is allowed only when configured; embedding/OCR must not require public egress. |
++| NFR-06 | When the internal gateway or the selected chat provider is temporarily unavailable, Browse remains fully usable; Upload still accepts files; Ask follows §6.4 (keyword-only retrieval when vector path is down; clear chat errors without silent provider failover). |
++| NFR-07 | Restart of the application must not lose uploaded documents, indexed chunks, or session history. |
++| NFR-08 | Backup must be possible by copying the database dump plus the upload volume. |
++| NFR-09 | Embedding model identity and vector dimension are configuration values; changing the embedding model requires a documented reindex of affected documents. |
++
++---
++
++## 9. Security And Data Safety
++
++| ID | Requirement |
++|---|---|
++| SEC-01 | All non-authentication endpoints require a valid session token. |
++| SEC-02 | Secrets, tokens, and passwords are never written to logs or returned in API responses. |
++| SEC-03 | Uploaded knowledge content never enters the Git repository. |
++| SEC-04 | Uploaded filenames are sanitized; path traversal attempts are rejected. |
++| SEC-05 | Model prompts must not be logged in full when they contain confidential document text. |
++| SEC-06 | Deleting a document removes it from retrieval results immediately. |
++| SEC-07 | Answers are treated as assistive output; the product must not present model output as an approved company record (see lesson L-006). |
++| SEC-08 | Document text and page images are never sent to public or third-party **embedding** or **OCR** endpoints. |
++| SEC-09 | Embedding and OCR base URLs must resolve to intranet/gateway hosts; configuring a public embedding/OCR endpoint is rejected as a configuration error. |
++| SEC-10 | Public **chat** providers are allowed only via explicit Admin configuration. Enabling them requires acknowledging that Ask-time retrieved snippets may leave the intranet. |
++| SEC-11 | Chat, embedding, and OCR API keys are stored as secrets, never logged, never returned in full by APIs, and never committed to Git. |
++
++---
++
++## 10. Acceptance Criteria
++
++v0.1 is accepted when a live demo on the pilot host satisfies all of the following.
++
++| ID | Acceptance criterion |
++|---|---|
++| AC-01 | Three accounts exist (Admin, Editor, Viewer) and each role's capability matrix in section 2.2 is observably enforced. |
++| AC-02 | A Viewer attempting to upload or delete is denied by the API, not only hidden in the UI. |
++| AC-03 | Ten representative department documents are uploaded and all reach `indexed`, or any failure shows an actionable reason. |
++| AC-03a | At least one scanned / image-based PDF is uploaded and reaches `indexed` via the OCR path; its parse mode is visible as OCR (or mixed). |
++| AC-04 | For ten representative business questions, at least eight answers carry citations that a reviewer confirms as relevant and traceable to the correct document. |
++| AC-05 | At least one question with no supporting content returns an explicit "no basis" answer rather than an invented one. |
++| AC-06 | A deleted document's content no longer appears in new answers or citations. |
++| AC-07 | Reindex recovers a document that previously failed due to a transient error. |
++| AC-08 | Session history persists across logout, login, and application restart. |
++| AC-09 | Audit list shows entries for upload, delete, reindex, and role change performed during the demo. |
++| AC-10 | The system is deployed and started from the documented Compose flow on a single host. |
++| AC-11 | With the default (internal-gateway) chat provider, Ask traffic targets the internal gateway; embedding and OCR traffic always target the internal gateway. |
++| AC-12 | An Admin can configure **at least two** public OpenAI-compatible chat providers (e.g. DeepSeek and another), keep both enabled, and set one system default. |
++| AC-13 | Configuration documents the gateway embedding model id and the gateway multimodal OCR path used in the pilot. |
++| AC-14 | Enabling a public chat provider shows the Admin Ask-time data-egress warning; no public key exists for embedding or OCR endpoints. |
++| AC-15 | Attempting to point embedding or OCR settings at a public URL is rejected. |
++| AC-16 | A Viewer can open Ask, switch between enabled chat providers, and complete a cited question with each selected provider. |
++| AC-17 | The answer UI shows which provider/model produced the reply; selecting a public provider shows the short egress notice on the composer. |
++| AC-18 | With the internal gateway unreachable and Internal Gateway selected on Ask, the user sees a clear unavailable error with retry and (if configured) a prompt to switch provider; no answer is fabricated and no silent provider switch occurs. |
++| AC-19 | With the internal gateway unreachable, Knowledge list and an already-indexed document detail remain fully readable. |
++| AC-20 | With the internal gateway unreachable, an Editor can still upload a valid file; the document appears in the list and either stays in a visible ingest state or reaches `failed` with a gateway-unavailable reason; after gateway recovery, reindex can complete without re-upload. |
++| AC-21 | With embedding unavailable but a public chat provider selected, Ask either answers using keyword-only retrieval with a visible semantic-search notice, or returns FR-35 when no keyword basis exists. |
++
++---
++
++## 11. Pilot Success Metrics
++
++Adoption signals to review after the pilot period. These are not acceptance gates.
++
++| Metric | Intent |
++|---|---|
++| Weekly active askers | Whether people return without being reminded |
++| Questions per week | Whether it becomes a habit |
++| Share of answers where the user opened a citation | Whether citations are trusted and used |
++| Documents indexed | Whether maintainers keep feeding it |
++| OCR documents indexed successfully | Whether scanned corpus is usable |
++| Reported wrong answers | Quality signal for retrieval tuning |
++
++---
++
++## 12. Resolved Decisions And Remaining Open Questions
++
++### 12.1 Resolved (2026-07-25)
++
++| Former ID | Decision | Locked as |
++|---|---|---|
++| OQ-01 | Chat uses configurable providers: internal gateway **and** public OpenAI-compatible endpoints (e.g. DeepSeek) | D-01 (revised in v0.1.3) |
++| OQ-02 | Scanned / image-based PDFs are in scope; **OCR is required** | D-02 |
++| OQ-06 | Department document text **must not** be sent to any external embedding service | D-03 |
++| OQ-07 | Embeddings use the **internal gateway embedding API** | D-04 |
++| OQ-08 | OCR uses the **internal gateway multimodal** path | D-05 |
++| OQ-10 | Multiple public chat providers may be enabled; any authenticated user may switch provider on Ask | D-06 |
++| OQ-11 | Per-surface degradation when the internal gateway is down (Browse full / Upload accept-then-fail / Ask partial) | D-07 |
++
++### 12.2 Still Open
++
++| ID | Question | Impact if unresolved |
++|---|---|---|
++| OQ-03 | Which team is the first pilot group and what corpus do they contribute? | Blocks AC-03 / AC-03a / AC-04 test material |
++| OQ-04 | Is there a designated company UI component library for intranet apps? | Frontend standards require an ADR before adopting a new kit |
++| OQ-05 | Which retention rule applies to session history and audit entries? | Affects data model and later compliance requests |
++| OQ-09 | Exact internal-gateway base URL(s), default chat model id, embedding model id, multimodal OCR model/path, and rate-limit expectations | Needed for `.env.example` and adapter smoke tests |
++
++`knowledge-ingest`, `ask-rag`, and `chat-providers` may proceed to SDD design against D-01–D-07. Concrete endpoint identifiers (OQ-09) land in env/Admin setup without changing product scope.
++
++---
++
++## 13. Proposed Slice Decomposition
++
++Downstream slices derived from this specification. Each slice gets its own full SDD chain.
++
++| Order | Slice key | Covers | Primary requirements |
++|---|---|---|---|
++| 1 | `repo-bootstrap` | Frontend shell, backend health endpoint, database and migration skeleton, Compose, env template for gateway chat/embedding/OCR settings | Enables all others |
++| 2 | `auth-password-jwt` | Login, session token, roles, account administration | FR-01 to FR-07, FR-50 to FR-51 |
++| 3 | `knowledge-ingest` | Upload, native parse + gateway multimodal OCR, chunk, gateway embedding, status, reindex, delete; upload-accept / ingest-fail during gateway outage | FR-10 to FR-23, FR-14a–d, D-02 to D-05, D-07 |
++| 4 | `ask-rag` | Hybrid retrieval, cited answering via user-selected chat provider, sessions, no-basis behavior, provider label, keyword-only fallback and chat errors on gateway outage | FR-30 to FR-45, D-01, D-06, D-07 |
++| 4a | `chat-providers` (may merge into auth or ask) | Admin CRUD for multiple chat providers, system default, public-egress warning; Ask selector for all users | FR-14c–j, FR-52, SEC-10/11, D-06 |
++| 5 | `audit-minimal` | Audit entries and Admin list view | FR-52 to FR-54 |
++
++Suggested sequencing rationale: authentication before ingestion so uploads have an owner, and ingestion before answering so retrieval has content. Gateway multimodal OCR and gateway embedding are part of `knowledge-ingest`, not separate slices.
++
++---
++
++## 14. Roadmap After v0.1
++
++Not commitments; direction only.
++
++| Candidate | Trigger |
++|---|---|
++| Company SSO | Pilot expands beyond the first department |
++| Agent mode | Users repeatedly ask multi-step questions that single-shot RAG answers poorly |
++| Wiki distillation | Corpus stabilizes and maintainers want curated pages |
++| Tagging and multiple collections | Corpus outgrows a single flat collection |
++| Streaming answers | Perceived latency becomes the main complaint |
++| Object storage backend | Deployment moves beyond a single host |
++
++---
++
++## 15. Traceability Notes
++
++- Downstream slice requirements must reference the FR / NFR / SEC / AC / D identifiers used here.
++- Changes to scope in section 4, or reversal of D-01 through D-07, require updating this document before the affected slice is implemented.
++- Product boundary claims must stay consistent with `docs/00-context/product-positioning.md` and ADR-0002.
++- Destination repository should add ADRs for D-01–D-07 before `knowledge-ingest` / `ask-rag` implementation. D-01/D-06 must record that multiple public chat providers are allowed, users may switch on Ask, and Ask-time snippet egress is accepted when a public provider is selected. D-07 must record the Browse / Upload / Ask degradation matrix in §6.4.
+diff --git a/docs/prototypes/README.md b/docs/prototypes/README.md
+new file mode 100644
+index 0000000..3693322
+--- /dev/null
++++ b/docs/prototypes/README.md
+@@ -0,0 +1,39 @@
++# Prototypes
++
++Static, mock-only prototypes for Quarry KB. These files illustrate intended product behavior. They are not an implementation and must never be wired to real services.
++
++## Current Prototype
++
++| File | Scope |
++|---|---|
++| `index.html` | v0.1 walkthrough: Login, Ask (provider switcher), Knowledge, Document detail, Admin (users + chat providers) |
++
++## How To Open
++
++```sh
++open docs/prototypes/index.html
++```
++
++No install step, build system, server, CDN, or framework is required.
++
++## What The Prototype Demonstrates
++
++- Role preview (`Admin` / `Editor` / `Viewer`) and how capability differences appear in the UI
++- Ask screen with inline citation markers, expandable sources, and a chat provider/model selector (internal + multiple public; FR-14h / D-06)
++- Public-provider egress notice on the Ask composer when a public model is selected
++- **Simulate gateway down** toggle (D-07): Ask error / keyword-only notice, Knowledge soft banner, Upload accept-then-fail copy
++- Explicit "no basis found" answer state (requirement FR-35)
++- Knowledge list with ingestion status pills (`Queued`, `Parsing`, `Indexed`, `Failed`)
++- Document detail with chunk preview, ingestion timeline, and Editor-only actions
++- Admin user list, multi-provider chat settings mock, and a minimal audit list
++- Deliberately disabled `Wiki` navigation and `Agent` mode, labeled as later
++
++## Deliberate Omissions
++
++Streaming answers, multi-collection navigation, SSO login, tag management, upload progress detail, and pagination are not modeled in v0.1.
++
++## Rules
++
++- Mock content only. No real company documents, filenames, screenshots, people, or system names.
++- Role behavior in the prototype is illustrative. Authorization is enforced server-side per `docs/standards/backend.md`.
++- When product scope changes, update `docs/01-requirements/quarry-kb-product-spec-v0.1.md` first, then the prototype.
+diff --git a/docs/prototypes/index.html b/docs/prototypes/index.html
+new file mode 100644
+index 0000000..e3919de
+--- /dev/null
++++ b/docs/prototypes/index.html
+@@ -0,0 +1,1293 @@
++<!doctype html>
++<html lang="en">
++  <head>
++    <meta charset="utf-8" />
++    <meta name="viewport" content="width=device-width, initial-scale=1" />
++    <title>Quarry KB — v0.1 Prototype (Mock)</title>
++    <style>
++      :root {
++        --teal: #0f766e;
++        --teal-soft: #e6f4f1;
++        --teal-line: #b9ded7;
++        --ink: #17222b;
++        --ink-2: #4a5b66;
++        --ink-3: #7d8d97;
++        --bg: #f6f8f9;
++        --panel: #ffffff;
++        --line: #e2e8eb;
++        --amber: #b45309;
++        --amber-soft: #fdf3e3;
++        --red: #b42318;
++        --red-soft: #fdecea;
++        --green: #067647;
++        --green-soft: #e7f6ee;
++        --radius: 10px;
++        --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
++          "PingFang SC", "Microsoft YaHei", sans-serif;
++      }
++
++      * { box-sizing: border-box; }
++
++      html, body {
++        margin: 0;
++        height: 100%;
++        background: var(--bg);
++        color: var(--ink);
++        font-family: var(--font);
++        font-size: 14px;
++        line-height: 1.55;
++      }
++
++      button, input, select, textarea { font: inherit; color: inherit; }
++      button { cursor: pointer; border: 0; background: none; }
++
++      .mock-banner {
++        background: var(--amber-soft);
++        color: var(--amber);
++        border-bottom: 1px solid #f0dfc2;
++        padding: 6px 16px;
++        font-size: 12px;
++        text-align: center;
++      }
++
++      /* ---------- Login ---------- */
++      .login {
++        min-height: calc(100vh - 29px);
++        display: grid;
++        place-items: center;
++        padding: 24px;
++      }
++
++      .login-card {
++        width: 100%;
++        max-width: 380px;
++        background: var(--panel);
++        border: 1px solid var(--line);
++        border-radius: 14px;
++        padding: 28px;
++        box-shadow: 0 8px 28px rgba(23, 34, 43, 0.06);
++      }
++
++      .brand {
++        display: flex;
++        align-items: center;
++        gap: 10px;
++        margin-bottom: 4px;
++      }
++
++      .brand-dot {
++        width: 26px;
++        height: 26px;
++        border-radius: 8px;
++        background: var(--teal);
++        display: grid;
++        place-items: center;
++        color: #fff;
++        font-weight: 700;
++        font-size: 13px;
++      }
++
++      .brand-name { font-weight: 650; letter-spacing: -0.01em; }
++      .muted { color: var(--ink-3); }
++      .small { font-size: 12px; }
++
++      .field { margin-top: 16px; }
++      .field label { display: block; font-size: 12px; color: var(--ink-2); margin-bottom: 6px; }
++
++      .input {
++        width: 100%;
++        padding: 9px 11px;
++        border: 1px solid var(--line);
++        border-radius: 8px;
++        background: #fff;
++        outline: none;
++      }
++
++      .input:focus { border-color: var(--teal-line); box-shadow: 0 0 0 3px var(--teal-soft); }
++
++      .btn {
++        display: inline-flex;
++        align-items: center;
++        justify-content: center;
++        gap: 6px;
++        padding: 8px 14px;
++        border-radius: 8px;
++        border: 1px solid transparent;
++        white-space: nowrap;
++      }
++
++      .btn-primary { background: var(--teal); color: #fff; font-weight: 550; }
++      .btn-primary:hover { background: #0b5f59; }
++      .btn-ghost { border-color: var(--line); background: #fff; color: var(--ink); }
++      .btn-ghost:hover { background: #f2f5f6; }
++      .btn-danger { border-color: #f0c8c4; background: #fff; color: var(--red); }
++      .btn-block { width: 100%; }
++      .btn-sm { padding: 5px 10px; font-size: 12.5px; }
++      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
++
++      .role-hint {
++        margin-top: 18px;
++        padding-top: 14px;
++        border-top: 1px solid var(--line);
++      }
++
++      .role-row { display: flex; gap: 6px; margin-top: 8px; }
++
++      /* ---------- Shell ---------- */
++      .shell { display: none; height: calc(100vh - 29px); }
++      .shell.on { display: grid; grid-template-columns: 236px 1fr; }
++
++      .side {
++        background: #fff;
++        border-right: 1px solid var(--line);
++        display: flex;
++        flex-direction: column;
++        min-height: 0;
++      }
++
++      .side-head { padding: 16px; border-bottom: 1px solid var(--line); }
++
++      .nav { padding: 10px 8px; display: grid; gap: 2px; }
++
++      .nav button {
++        display: flex;
++        align-items: center;
++        justify-content: space-between;
++        gap: 8px;
++        width: 100%;
++        text-align: left;
++        padding: 8px 10px;
++        border-radius: 8px;
++        color: var(--ink-2);
++      }
++
++      .nav button:hover:not(:disabled) { background: #f2f5f6; }
++      .nav button.on { background: var(--teal-soft); color: var(--teal); font-weight: 550; }
++      .nav button:disabled { color: var(--ink-3); cursor: not-allowed; }
++
++      .tag {
++        font-size: 10.5px;
++        padding: 1px 6px;
++        border-radius: 999px;
++        background: #eef1f3;
++        color: var(--ink-3);
++        letter-spacing: 0.02em;
++      }
++
++      .side-sub {
++        margin-top: 6px;
++        padding: 12px 16px 8px;
++        border-top: 1px solid var(--line);
++        font-size: 11px;
++        text-transform: uppercase;
++        letter-spacing: 0.07em;
++        color: var(--ink-3);
++      }
++
++      .sessions { padding: 0 8px 12px; overflow: auto; display: grid; gap: 2px; }
++
++      .sessions button {
++        text-align: left;
++        width: 100%;
++        padding: 7px 10px;
++        border-radius: 8px;
++        color: var(--ink-2);
++        font-size: 13px;
++        overflow: hidden;
++        text-overflow: ellipsis;
++        white-space: nowrap;
++      }
++
++      .sessions button:hover { background: #f2f5f6; }
++      .sessions button.on { background: #eef1f3; color: var(--ink); }
++
++      .side-foot { margin-top: auto; padding: 12px 16px; border-top: 1px solid var(--line); }
++
++      .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
++
++      .topbar {
++        height: 56px;
++        flex: 0 0 auto;
++        background: #fff;
++        border-bottom: 1px solid var(--line);
++        display: flex;
++        align-items: center;
++        justify-content: space-between;
++        padding: 0 20px;
++      }
++
++      .topbar h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
++
++      .user-chip {
++        display: flex;
++        align-items: center;
++        gap: 8px;
++        padding: 4px 10px 4px 4px;
++        border: 1px solid var(--line);
++        border-radius: 999px;
++      }
++
++      .avatar {
++        width: 24px;
++        height: 24px;
++        border-radius: 50%;
++        background: var(--teal-soft);
++        color: var(--teal);
++        display: grid;
++        place-items: center;
++        font-size: 11px;
++        font-weight: 650;
++      }
++
++      .role-pill {
++        font-size: 10.5px;
++        padding: 1px 7px;
++        border-radius: 999px;
++        background: var(--teal-soft);
++        color: var(--teal);
++      }
++
++      .page { display: none; flex: 1 1 auto; min-height: 0; }
++      .page.on { display: flex; flex-direction: column; }
++
++      /* ---------- Ask ---------- */
++      .thread { flex: 1 1 auto; overflow: auto; padding: 22px 24px; }
++      .thread-inner { max-width: 780px; margin: 0 auto; display: grid; gap: 18px; }
++
++      .turn-user {
++        justify-self: end;
++        max-width: 78%;
++        background: var(--teal);
++        color: #fff;
++        padding: 10px 14px;
++        border-radius: 14px 14px 4px 14px;
++      }
++
++      .answer {
++        background: #fff;
++        border: 1px solid var(--line);
++        border-radius: 14px 14px 14px 4px;
++        overflow: hidden;
++      }
++
++      .answer-body { padding: 16px 18px; }
++      .answer-body p { margin: 0 0 10px; }
++      .answer-body p:last-child { margin-bottom: 0; }
++
++      .cite {
++        display: inline-block;
++        min-width: 18px;
++        text-align: center;
++        font-size: 11px;
++        line-height: 16px;
++        padding: 0 4px;
++        margin: 0 1px;
++        border-radius: 5px;
++        background: var(--teal-soft);
++        color: var(--teal);
++        border: 1px solid var(--teal-line);
++        cursor: pointer;
++        vertical-align: 1px;
++      }
++
++      .cite:hover { background: var(--teal); color: #fff; }
++
++      .sources { border-top: 1px solid var(--line); background: #fafbfc; }
++
++      .sources-head {
++        display: flex;
++        align-items: center;
++        justify-content: space-between;
++        width: 100%;
++        padding: 10px 18px;
++        font-size: 12.5px;
++        color: var(--ink-2);
++      }
++
++      .sources-list { display: none; padding: 0 18px 14px; gap: 8px; }
++      .sources.open .sources-list { display: grid; }
++
++      .source {
++        display: grid;
++        grid-template-columns: 22px 1fr auto;
++        gap: 10px;
++        align-items: start;
++        padding: 10px 12px;
++        background: #fff;
++        border: 1px solid var(--line);
++        border-radius: 8px;
++      }
++
++      .source .idx {
++        font-size: 11px;
++        color: var(--teal);
++        background: var(--teal-soft);
++        border-radius: 5px;
++        text-align: center;
++        line-height: 18px;
++      }
++
++      .source .loc { font-size: 11.5px; color: var(--ink-3); margin-bottom: 2px; }
++      .source .snip { font-size: 12.5px; color: var(--ink-2); }
++
++      .empty-note {
++        background: #fff;
++        border: 1px dashed var(--line);
++        border-radius: 12px;
++        padding: 18px;
++        color: var(--ink-2);
++      }
++
++      .composer { flex: 0 0 auto; border-top: 1px solid var(--line); background: #fff; padding: 12px 24px 16px; }
++      .composer-inner { max-width: 780px; margin: 0 auto; }
++
++      .mode-switch {
++        display: inline-flex;
++        gap: 4px;
++        padding: 3px;
++        border: 1px solid var(--line);
++        border-radius: 999px;
++        margin-bottom: 10px;
++      }
++
++      .mode-switch button { padding: 4px 12px; border-radius: 999px; font-size: 12.5px; color: var(--ink-3); }
++      .mode-switch button.on { background: var(--teal-soft); color: var(--teal); font-weight: 550; }
++
++      .composer-box {
++        display: grid;
++        grid-template-columns: 1fr auto;
++        gap: 10px;
++        align-items: end;
++        border: 1px solid var(--line);
++        border-radius: 12px;
++        padding: 10px 10px 10px 14px;
++      }
++
++      .composer-box:focus-within { border-color: var(--teal-line); box-shadow: 0 0 0 3px var(--teal-soft); }
++      .composer-box textarea { border: 0; outline: none; resize: none; min-height: 44px; width: 100%; }
++
++      /* ---------- Content pages ---------- */
++      .body { flex: 1 1 auto; overflow: auto; padding: 20px 24px 28px; }
++      .body-inner { max-width: 1080px; margin: 0 auto; }
++
++      .toolbar {
++        display: flex;
++        flex-wrap: wrap;
++        align-items: center;
++        gap: 10px;
++        margin-bottom: 14px;
++      }
++
++      .toolbar .grow { flex: 1 1 220px; }
++
++      .chips { display: flex; gap: 6px; flex-wrap: wrap; }
++
++      .chip {
++        padding: 4px 10px;
++        border: 1px solid var(--line);
++        border-radius: 999px;
++        background: #fff;
++        font-size: 12.5px;
++        color: var(--ink-2);
++      }
++
++      .chip.on { border-color: var(--teal-line); background: var(--teal-soft); color: var(--teal); }
++
++      .card { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
++
++      table { width: 100%; border-collapse: collapse; }
++
++      th {
++        text-align: left;
++        font-size: 11px;
++        text-transform: uppercase;
++        letter-spacing: 0.06em;
++        color: var(--ink-3);
++        font-weight: 600;
++        padding: 10px 14px;
++        border-bottom: 1px solid var(--line);
++        background: #fafbfc;
++      }
++
++      td { padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
++      tbody tr:last-child td { border-bottom: 0; }
++      tbody tr { cursor: pointer; }
++      tbody tr:hover { background: #fafbfc; }
++      tbody tr.on { background: var(--teal-soft); }
++
++      .doc-title { font-weight: 550; }
++      .nowrap { white-space: nowrap; }
++
++      .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 2px 9px; border-radius: 999px; }
++      .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
++      .pill-indexed { background: var(--green-soft); color: var(--green); }
++      .pill-parsing { background: var(--amber-soft); color: var(--amber); }
++      .pill-failed { background: var(--red-soft); color: var(--red); }
++      .pill-queued { background: #eef1f3; color: var(--ink-2); }
++
++      .layout-split { display: grid; grid-template-columns: 1fr 320px; gap: 16px; align-items: start; }
++
++      @media (max-width: 1000px) {
++        .layout-split { grid-template-columns: 1fr; }
++        .shell.on { grid-template-columns: 64px 1fr; }
++        .side-head .brand-name, .sessions, .side-sub, .side-foot, .nav .tag { display: none; }
++      }
++
++      .drawer { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
++      .drawer h3 { margin: 0 0 2px; font-size: 14px; }
++      .kv { display: grid; grid-template-columns: 92px 1fr; gap: 6px 10px; margin-top: 14px; font-size: 13px; }
++      .kv dt { color: var(--ink-3); }
++      .kv dd { margin: 0; }
++      .drawer-actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
++
++      .section-title { margin: 22px 0 10px; font-size: 13px; font-weight: 600; }
++
++      .chunk {
++        background: #fff;
++        border: 1px solid var(--line);
++        border-radius: 8px;
++        padding: 12px 14px;
++        margin-bottom: 8px;
++      }
++
++      .chunk .loc { font-size: 11.5px; color: var(--ink-3); margin-bottom: 4px; }
++
++      .banner {
++        display: flex;
++        gap: 10px;
++        align-items: flex-start;
++        padding: 12px 14px;
++        border-radius: 8px;
++        margin-bottom: 14px;
++        font-size: 13px;
++      }
++
++      .banner-error { background: var(--red-soft); color: var(--red); border: 1px solid #f2cdc9; }
++      .banner-warn { background: var(--amber-soft); color: var(--amber); border: 1px solid #f0dfc2; }
++      .banner-ok { background: var(--green-soft); color: var(--green); border: 1px solid #c6e9d6; }
++      .degrade-only { display: none !important; }
++      body.gateway-down .banner.degrade-only { display: flex !important; }
++      body.gateway-down tr.degrade-only { display: table-row !important; }
++      body.gateway-down .healthy-only { display: none !important; }
++      .topbar-tools { display: flex; align-items: center; gap: 10px; }
++      .toggle-chip {
++        display: inline-flex;
++        align-items: center;
++        gap: 6px;
++        padding: 5px 10px;
++        border-radius: 999px;
++        border: 1px solid var(--line);
++        background: #fff;
++        font-size: 12px;
++        color: var(--ink-2);
++      }
++      body.gateway-down .toggle-chip {
++        border-color: #f0dfc2;
++        background: var(--amber-soft);
++        color: var(--amber);
++      }
++
++      .back-link { display: inline-flex; gap: 6px; align-items: center; color: var(--teal); font-size: 13px; margin-bottom: 12px; }
++
++      select.input { padding: 6px 8px; }
++
++      .modal-mask {
++        display: none;
++        position: fixed;
++        inset: 0;
++        background: rgba(23, 34, 43, 0.35);
++        place-items: center;
++        padding: 20px;
++        z-index: 20;
++      }
++
++      .modal-mask.on { display: grid; }
++
++      .modal {
++        width: 100%;
++        max-width: 440px;
++        background: #fff;
++        border-radius: 14px;
++        padding: 22px;
++        box-shadow: 0 20px 50px rgba(23, 34, 43, 0.2);
++      }
++
++      .drop {
++        margin-top: 14px;
++        border: 1px dashed var(--teal-line);
++        background: var(--teal-soft);
++        border-radius: 10px;
++        padding: 22px;
++        text-align: center;
++        color: var(--ink-2);
++      }
++
++      .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
++    </style>
++  </head>
++  <body>
++    <div class="mock-banner">
++      Mock prototype — static HTML, no backend, no real company data. Illustrates Quarry KB v0.1 scope only.
++      Use the shell toggle <strong>Simulate gateway down</strong> to preview D-07 degradation.
++    </div>
++
++    <!-- ============ LOGIN ============ -->
++    <section class="login" id="login">
++      <div class="login-card">
++        <div class="brand">
++          <span class="brand-dot">Q</span>
++          <span class="brand-name">Quarry KB</span>
++        </div>
++        <p class="muted small" style="margin: 6px 0 0">
++          Department knowledge workbench. Ask questions, get cited answers.
++        </p>
++
++        <div class="field">
++          <label for="account">Account</label>
++          <input class="input" id="account" value="mock.user" />
++        </div>
++        <div class="field">
++          <label for="password">Password</label>
++          <input class="input" id="password" type="password" value="········" />
++        </div>
++        <div class="field">
++          <button class="btn btn-primary btn-block" id="login-btn">Sign in</button>
++        </div>
++
++        <div class="role-hint">
++          <div class="small muted">Prototype only: pick a role to preview permissions.</div>
++          <div class="role-row" id="role-picker">
++            <button class="chip on" data-role="Admin">Admin</button>
++            <button class="chip" data-role="Editor">Editor</button>
++            <button class="chip" data-role="Viewer">Viewer</button>
++          </div>
++          <div class="small muted" style="margin-top: 10px">
++            Phase 2 will replace this screen with company SSO.
++          </div>
++        </div>
++      </div>
++    </section>
++
++    <!-- ============ SHELL ============ -->
++    <div class="shell" id="shell">
++      <aside class="side">
++        <div class="side-head">
++          <div class="brand">
++            <span class="brand-dot">Q</span>
++            <span class="brand-name">Quarry KB</span>
++          </div>
++        </div>
++
++        <nav class="nav" id="nav">
++          <button data-page="ask" class="on">Ask</button>
++          <button data-page="knowledge">Knowledge</button>
++          <button disabled>Wiki <span class="tag">later</span></button>
++          <button data-page="admin">Admin</button>
++        </nav>
++
++        <div class="side-sub">My sessions</div>
++        <div class="sessions" id="sessions">
++          <button class="on">Approval owner for change requests</button>
++          <button>Onboarding checklist for new joiners</button>
++          <button>Release cut-off rules</button>
++          <button>Which template for incident review?</button>
++        </div>
++
++        <div class="side-foot">
++          <div class="small muted">v0.1 prototype</div>
++          <button class="btn btn-ghost btn-sm btn-block" id="signout" style="margin-top: 8px">Sign out</button>
++        </div>
++      </aside>
++
++      <main class="main">
++        <header class="topbar">
++          <h1 id="page-title">Ask</h1>
++          <div class="topbar-tools">
++            <label class="toggle-chip" title="Prototype only: preview D-07">
++              <input type="checkbox" id="gateway-down-toggle" />
++              Simulate gateway down
++            </label>
++            <div class="user-chip">
++              <span class="avatar" id="avatar">MU</span>
++              <span class="small">Mock User</span>
++              <span class="role-pill" id="role-pill">Admin</span>
++            </div>
++          </div>
++        </header>
++
++        <!-- ---------- Ask ---------- -->
++        <section class="page on" id="page-ask">
++          <div class="thread">
++            <div class="thread-inner">
++              <div class="banner banner-error degrade-only" id="ask-gateway-error">
++                <div>
++                  <strong>Internal gateway is unavailable.</strong>
++                  Retry, or switch to another enabled model (e.g. DeepSeek). Quarry does not
++                  auto-switch providers. Session history below stays readable.
++                </div>
++              </div>
++              <div class="banner banner-warn degrade-only" id="ask-keyword-notice" style="display:none">
++                <div>
++                  <strong>Semantic search unavailable.</strong>
++                  Using keyword match only while the gateway embedding path is down. Citations still
++                  required when chunks are found.
++                </div>
++              </div>
++
++              <div class="turn-user">Who approves a change request for the payment module?</div>
++
++              <div class="answer">
++                <div class="answer-body">
++                  <div class="small muted" style="margin-bottom:8px">Answered with · Internal Gateway · default</div>
++                  <p>
++                    A change request for the payment module is approved by the module owner first,
++                    then by the release manager during the weekly change window
++                    <span class="cite">1</span><span class="cite">2</span>.
++                  </p>
++                  <p>
++                    If the change is classified as emergency, the release manager may approve alone,
++                    but a retrospective review is required within two working days
++                    <span class="cite">3</span>.
++                  </p>
++                </div>
++                <div class="sources open">
++                  <button class="sources-head" data-toggle="sources">
++                    <span>Sources · 3</span><span class="muted">collapse</span>
++                  </button>
++                  <div class="sources-list">
++                    <div class="source">
++                      <span class="idx">1</span>
++                      <div>
++                        <div class="loc">Change Management Handbook (mock) · page 12</div>
++                        <div class="snip">
++                          "Module owners are the first approval gate for any change request affecting
++                          their component…"
++                        </div>
++                      </div>
++                      <button class="btn btn-ghost btn-sm" data-open-doc>Open</button>
++                    </div>
++                    <div class="source">
++                      <span class="idx">2</span>
++                      <div>
++                        <div class="loc">Weekly Release Process (mock) · chunk 4</div>
++                        <div class="snip">
++                          "The release manager confirms approved changes during the weekly change
++                          window before the cut-off…"
++                        </div>
++                      </div>
++                      <button class="btn btn-ghost btn-sm" data-open-doc>Open</button>
++                    </div>
++                    <div class="source">
++                      <span class="idx">3</span>
++                      <div>
++                        <div class="loc">Emergency Change Policy (mock) · page 3</div>
++                        <div class="snip">
++                          "Emergency changes may proceed with a single approval, followed by a
++                          retrospective review within two working days…"
++                        </div>
++                      </div>
++                      <button class="btn btn-ghost btn-sm" data-open-doc>Open</button>
++                    </div>
++                  </div>
++                </div>
++              </div>
++
++              <div class="turn-user">What is the budget for next year's team offsite?</div>
++
++              <div class="answer">
++                <div class="answer-body">
++                  <p>
++                    No basis found in the knowledge base for this question. The indexed documents do
++                    not cover offsite budgets.
++                  </p>
++                  <p class="small muted">
++                    Expected behavior per FR-35: state that there is no supporting content instead of
++                    producing an unsupported answer.
++                  </p>
++                </div>
++                <div class="sources">
++                  <button class="sources-head" data-toggle="sources">
++                    <span>Sources · 0</span><span class="muted">expand</span>
++                  </button>
++                  <div class="sources-list">
++                    <div class="empty-note small">
++                      Retrieval returned no chunk above the relevance threshold.
++                    </div>
++                  </div>
++                </div>
++              </div>
++            </div>
++          </div>
++
++          <div class="composer">
++            <div class="composer-inner">
++              <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px">
++                <div class="mode-switch">
++                  <button class="on">RAG</button>
++                  <button disabled>Agent <span class="tag">later</span></button>
++                </div>
++                <label class="small muted" for="provider-select" style="display:flex;align-items:center;gap:8px">
++                  Model
++                  <select class="input" id="provider-select" style="width:auto;min-width:200px;padding:5px 8px">
++                    <option selected>Internal Gateway · default</option>
++                    <option>DeepSeek · deepseek-chat</option>
++                    <option>Public Provider B · gpt-compatible</option>
++                  </select>
++                </label>
++              </div>
++              <div class="composer-box">
++                <textarea placeholder="Ask a question about department documents…"></textarea>
++                <button class="btn btn-primary">Ask</button>
++              </div>
++              <div class="small muted" style="margin-top: 8px" id="provider-notice">
++                Answers are assistive output grounded in uploaded documents. Always open the citation
++                before relying on it.
++              </div>
++            </div>
++          </div>
++        </section>
++
++        <!-- ---------- Knowledge ---------- -->
++        <section class="page" id="page-knowledge">
++          <div class="body">
++            <div class="body-inner">
++              <div class="banner banner-ok healthy-only">
++                <div>
++                  <strong>Browse is independent of the gateway.</strong>
++                  Knowledge list and indexed document detail stay available even when the gateway is down.
++                </div>
++              </div>
++              <div class="banner banner-warn degrade-only">
++                <div>
++                  <strong>Internal gateway unavailable — Browse still works.</strong>
++                  Upload still accepts files, but new OCR/embedding ingest may fail. Reindex after recovery.
++                  Already-indexed documents remain fully readable.
++                </div>
++              </div>
++              <div class="toolbar">
++                <input class="input grow" placeholder="Search by title…" />
++                <div class="chips">
++                  <button class="chip on">All</button>
++                  <button class="chip">Indexed</button>
++                  <button class="chip">Parsing</button>
++                  <button class="chip">Failed</button>
++                </div>
++                <button class="btn btn-primary" id="upload-open" data-requires="editor">Upload</button>
++              </div>
++
++              <div class="layout-split">
++                <div class="card">
++                  <table>
++                    <thead>
++                      <tr>
++                        <th>Title</th>
++                        <th>Type</th>
++                        <th>Owner</th>
++                        <th class="nowrap">Chunks</th>
++                        <th>Status</th>
++                        <th class="nowrap">Updated</th>
++                      </tr>
++                    </thead>
++                    <tbody id="doc-rows">
++                      <tr class="on">
++                        <td class="doc-title">Change Management Handbook (mock)</td>
++                        <td>PDF</td>
++                        <td>editor.a</td>
++                        <td>184</td>
++                        <td><span class="pill pill-indexed">Indexed</span></td>
++                        <td class="nowrap muted">2026-07-24</td>
++                      </tr>
++                      <tr>
++                        <td class="doc-title">Weekly Release Process (mock)</td>
++                        <td>MD</td>
++                        <td>editor.a</td>
++                        <td>42</td>
++                        <td><span class="pill pill-indexed">Indexed</span></td>
++                        <td class="nowrap muted">2026-07-24</td>
++                      </tr>
++                      <tr>
++                        <td class="doc-title">Emergency Change Policy (mock)</td>
++                        <td>DOCX</td>
++                        <td>editor.b</td>
++                        <td>27</td>
++                        <td><span class="pill pill-indexed">Indexed</span></td>
++                        <td class="nowrap muted">2026-07-23</td>
++                      </tr>
++                      <tr>
++                        <td class="doc-title">Onboarding Checklist (mock)</td>
++                        <td>MD</td>
++                        <td>editor.b</td>
++                        <td>—</td>
++                        <td><span class="pill pill-parsing">Parsing</span></td>
++                        <td class="nowrap muted">2026-07-25</td>
++                      </tr>
++                      <tr>
++                        <td class="doc-title">Scanned Vendor Form (mock)</td>
++                        <td>PDF</td>
++                        <td>editor.a</td>
++                        <td>—</td>
++                        <td><span class="pill pill-failed">Failed</span></td>
++                        <td class="nowrap muted">2026-07-25</td>
++                      </tr>
++                      <tr class="degrade-only">
++                        <td class="doc-title">Weekly Ops Notes (mock)</td>
++                        <td>MD</td>
++                        <td>editor.a</td>
++                        <td>—</td>
++                        <td><span class="pill pill-failed">Failed</span></td>
++                        <td class="nowrap muted">gateway embedding unavailable</td>
++                      </tr>
++                      <tr>
++                        <td class="doc-title">Incident Review Template (mock)</td>
++                        <td>TXT</td>
++                        <td>admin</td>
++                        <td>—</td>
++                        <td><span class="pill pill-queued">Queued</span></td>
++                        <td class="nowrap muted">2026-07-25</td>
++                      </tr>
++                    </tbody>
++                  </table>
++                </div>
++
++                <div class="drawer">
++                  <h3>Change Management Handbook (mock)</h3>
++                  <div class="small muted">change-management-handbook.pdf</div>
++                  <dl class="kv">
++                    <dt>Status</dt>
++                    <dd><span class="pill pill-indexed">Indexed</span></dd>
++                    <dt>Parse mode</dt>
++                    <dd>Native text</dd>
++                    <dt>Type</dt>
++                    <dd>PDF · 4.2 MB</dd>
++                    <dt>Chunks</dt>
++                    <dd>184</dd>
++                    <dt>Owner</dt>
++                    <dd>editor.a</dd>
++                    <dt>Uploaded</dt>
++                    <dd>2026-07-24 09:12</dd>
++                    <dt>Indexed</dt>
++                    <dd>2026-07-24 09:14</dd>
++                  </dl>
++                  <div class="drawer-actions">
++                    <button class="btn btn-ghost btn-sm" data-page-link="document">Open detail</button>
++                    <button class="btn btn-ghost btn-sm" data-requires="editor">Reindex</button>
++                    <button class="btn btn-danger btn-sm" data-requires="editor">Delete</button>
++                  </div>
++                  <div class="small muted" style="margin-top: 12px">
++                    Viewers can read metadata but cannot upload, reindex, or delete.
++                  </div>
++                </div>
++              </div>
++            </div>
++          </div>
++        </section>
++
++        <!-- ---------- Document detail ---------- -->
++        <section class="page" id="page-document">
++          <div class="body">
++            <div class="body-inner">
++              <button class="back-link" data-page-link="knowledge">← Back to Knowledge</button>
++
++              <div class="banner banner-error">
++                <div>
++                  <strong>One document needs attention.</strong>
++                  "Scanned Vendor Form (mock)" failed gateway multimodal OCR on pages 2–4 (gateway timeout).
++                  Per D-05, OCR uses the internal gateway multimodal path; Editors can reindex after the gateway recovers.
++                </div>
++              </div>
++
++              <div class="layout-split">
++                <div>
++                  <div class="card" style="padding: 18px">
++                    <h2 style="margin: 0 0 4px; font-size: 17px">Change Management Handbook (mock)</h2>
++                    <div class="small muted">
++                      PDF · 4.2 MB · 184 chunks · uploaded by editor.a on 2026-07-24
++                    </div>
++                  </div>
++
++                  <div class="section-title">Chunk preview</div>
++                  <div class="chunk">
++                    <div class="loc">chunk 0 · page 1</div>
++                    <div>
++                      This handbook describes how change requests are raised, reviewed, approved, and
++                      recorded for department-owned systems…
++                    </div>
++                  </div>
++                  <div class="chunk">
++                    <div class="loc">chunk 12 · page 12</div>
++                    <div>
++                      Module owners are the first approval gate for any change request affecting their
++                      component. The release manager confirms scheduling…
++                    </div>
++                  </div>
++                  <div class="chunk">
++                    <div class="loc">chunk 13 · page 12</div>
++                    <div>
++                      Approvals must be recorded before the weekly cut-off. Late submissions move to the
++                      next window unless classified as emergency…
++                    </div>
++                  </div>
++                  <button class="btn btn-ghost btn-sm">Load more chunks</button>
++                </div>
++
++                <div class="drawer">
++                  <h3>Actions</h3>
++                  <div class="small muted">Editor or Admin only</div>
++                  <div class="drawer-actions">
++                    <button class="btn btn-ghost btn-sm" data-requires="editor">Reindex</button>
++                    <button class="btn btn-ghost btn-sm" data-requires="editor">Replace file</button>
++                    <button class="btn btn-danger btn-sm" data-requires="editor">Delete</button>
++                  </div>
++                  <div class="section-title" style="margin-top: 20px">Ingestion timeline</div>
++                  <div class="small muted">
++                    09:12 uploaded<br />
++                    09:12 queued<br />
++                    09:13 parsing<br />
++                    09:14 indexed (184 chunks)
++                  </div>
++                </div>
++              </div>
++            </div>
++          </div>
++        </section>
++
++        <!-- ---------- Admin ---------- -->
++        <section class="page" id="page-admin">
++          <div class="body">
++            <div class="body-inner">
++              <div class="toolbar">
++                <input class="input grow" placeholder="Search users…" />
++                <button class="btn btn-primary">Add user</button>
++              </div>
++
++              <div class="card">
++                <table>
++                  <thead>
++                    <tr>
++                      <th>Account</th>
++                      <th>Name</th>
++                      <th>Role</th>
++                      <th>Status</th>
++                      <th class="nowrap">Last active</th>
++                    </tr>
++                  </thead>
++                  <tbody>
++                    <tr>
++                      <td class="doc-title">admin</td>
++                      <td>Mock Admin</td>
++                      <td>
++                        <select class="input">
++                          <option selected>Admin</option>
++                          <option>Editor</option>
++                          <option>Viewer</option>
++                        </select>
++                      </td>
++                      <td><span class="pill pill-indexed">Active</span></td>
++                      <td class="nowrap muted">2026-07-25</td>
++                    </tr>
++                    <tr>
++                      <td class="doc-title">editor.a</td>
++                      <td>Mock Editor A</td>
++                      <td>
++                        <select class="input">
++                          <option>Admin</option>
++                          <option selected>Editor</option>
++                          <option>Viewer</option>
++                        </select>
++                      </td>
++                      <td><span class="pill pill-indexed">Active</span></td>
++                      <td class="nowrap muted">2026-07-25</td>
++                    </tr>
++                    <tr>
++                      <td class="doc-title">viewer.c</td>
++                      <td>Mock Viewer C</td>
++                      <td>
++                        <select class="input">
++                          <option>Admin</option>
++                          <option>Editor</option>
++                          <option selected>Viewer</option>
++                        </select>
++                      </td>
++                      <td><span class="pill pill-queued">Disabled</span></td>
++                      <td class="nowrap muted">2026-07-21</td>
++                    </tr>
++                  </tbody>
++                </table>
++              </div>
++
++              <div class="section-title">Chat providers</div>
++              <div class="card">
++                <div class="small muted" style="margin-bottom:12px">
++                  Multiple public providers may be enabled at once. Users select among enabled
++                  display names on Ask; API keys stay Admin-only. Enabling a public endpoint shows
++                  an Ask-time data-egress warning.
++                </div>
++                <table>
++                  <thead>
++                    <tr>
++                      <th>Display name</th>
++                      <th>Kind</th>
++                      <th>Model</th>
++                      <th>Status</th>
++                      <th>Default</th>
++                    </tr>
++                  </thead>
++                  <tbody>
++                    <tr>
++                      <td class="doc-title">Internal Gateway</td>
++                      <td>Intranet</td>
++                      <td class="muted">default</td>
++                      <td><span class="pill pill-indexed">Enabled</span></td>
++                      <td>Yes</td>
++                    </tr>
++                    <tr>
++                      <td class="doc-title">DeepSeek</td>
++                      <td>Public</td>
++                      <td class="muted">deepseek-chat</td>
++                      <td><span class="pill pill-indexed">Enabled</span></td>
++                      <td>No</td>
++                    </tr>
++                    <tr>
++                      <td class="doc-title">Public Provider B</td>
++                      <td>Public</td>
++                      <td class="muted">gpt-compatible</td>
++                      <td><span class="pill pill-indexed">Enabled</span></td>
++                      <td>No</td>
++                    </tr>
++                  </tbody>
++                </table>
++                <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
++                  <button class="btn btn-primary">Add provider</button>
++                  <button class="btn btn-ghost">Edit selected</button>
++                </div>
++              </div>
++
++              <div class="section-title">Recent audit entries</div>
++              <div class="card">
++                <table>
++                  <thead>
++                    <tr>
++                      <th class="nowrap">Time</th>
++                      <th>Actor</th>
++                      <th>Action</th>
++                      <th>Target</th>
++                    </tr>
++                  </thead>
++                  <tbody>
++                    <tr>
++                      <td class="nowrap muted">2026-07-25 11:02</td>
++                      <td>admin</td>
++                      <td>chat_provider.enable</td>
++                      <td>Public Provider B (public · egress warning ack)</td>
++                    </tr>
++                    <tr>
++                      <td class="nowrap muted">2026-07-25 10:41</td>
++                      <td>editor.a</td>
++                      <td>document.upload</td>
++                      <td>Incident Review Template (mock)</td>
++                    </tr>
++                    <tr>
++                      <td class="nowrap muted">2026-07-25 10:22</td>
++                      <td>editor.b</td>
++                      <td>document.reindex</td>
++                      <td>Onboarding Checklist (mock)</td>
++                    </tr>
++                    <tr>
++                      <td class="nowrap muted">2026-07-24 16:05</td>
++                      <td>admin</td>
++                      <td>user.role_change</td>
++                      <td>viewer.c → Viewer</td>
++                    </tr>
++                  </tbody>
++                </table>
++              </div>
++            </div>
++          </div>
++        </section>
++      </main>
++    </div>
++
++    <!-- ============ Upload modal ============ -->
++    <div class="modal-mask" id="upload-modal">
++      <div class="modal">
++        <h3 style="margin: 0 0 4px; font-size: 16px">Upload documents</h3>
++        <div class="small muted">Supported in v0.1: Markdown, TXT, PDF, DOCX · max 50 MB each</div>
++        <div class="banner banner-warn degrade-only" style="margin-top:12px">
++          <div>
++            <strong>Upload still accepts files.</strong>
++            Files are stored now; indexing may fail with
++            "Internal gateway unavailable — retry / reindex later" until the gateway recovers.
++          </div>
++        </div>
++        <div class="drop">Drop files here, or click to choose (mock)</div>
++        <div class="small muted" style="margin-top: 12px">
++          Never upload real company documents into this prototype.
++        </div>
++        <div class="modal-actions">
++          <button class="btn btn-ghost" data-close-modal>Cancel</button>
++          <button class="btn btn-primary" data-close-modal>Start upload</button>
++        </div>
++      </div>
++    </div>
++
++    <script>
++      const $ = (sel) => document.querySelector(sel);
++      const $$ = (sel) => Array.from(document.querySelectorAll(sel));
++
++      const titles = {
++        ask: "Ask",
++        knowledge: "Knowledge",
++        document: "Document detail",
++        admin: "Admin · Users & providers",
++      };
++
++      let role = "Admin";
++
++      function showPage(page) {
++        $$(".page").forEach((p) => p.classList.remove("on"));
++        const target = document.getElementById("page-" + page);
++        if (target) target.classList.add("on");
++        $("#page-title").textContent = titles[page] || page;
++        $$("#nav button").forEach((b) =>
++          b.classList.toggle("on", b.dataset.page === page || (page === "document" && b.dataset.page === "knowledge"))
++        );
++      }
++
++      function applyRole(next) {
++        role = next;
++        $("#role-pill").textContent = role;
++        const canEdit = role === "Admin" || role === "Editor";
++        $$("[data-requires='editor']").forEach((el) => {
++          el.disabled = !canEdit;
++          el.title = canEdit ? "" : "Requires Editor or Admin";
++        });
++        const adminNav = $$("#nav button").find((b) => b.dataset.page === "admin");
++        if (adminNav) {
++          const isAdmin = role === "Admin";
++          adminNav.disabled = !isAdmin;
++          adminNav.title = isAdmin ? "" : "Admin only";
++          if (!isAdmin && $("#page-admin").classList.contains("on")) showPage("ask");
++        }
++      }
++
++      $("#login-btn").onclick = () => {
++        $("#login").style.display = "none";
++        $("#shell").classList.add("on");
++        applyRole(role);
++        showPage("ask");
++      };
++
++      $("#signout").onclick = () => {
++        $("#shell").classList.remove("on");
++        $("#login").style.display = "grid";
++      };
++
++      $$("#role-picker button").forEach((btn) => {
++        btn.onclick = () => {
++          $$("#role-picker button").forEach((b) => b.classList.remove("on"));
++          btn.classList.add("on");
++          role = btn.dataset.role;
++        };
++      });
++
++      $$("#nav button").forEach((btn) => {
++        if (!btn.dataset.page) return;
++        btn.onclick = () => showPage(btn.dataset.page);
++      });
++
++      $$("[data-page-link]").forEach((btn) => {
++        btn.onclick = () => showPage(btn.dataset.pageLink);
++      });
++
++      $$("[data-open-doc]").forEach((btn) => {
++        btn.onclick = () => showPage("document");
++      });
++
++      $$("[data-toggle='sources']").forEach((btn) => {
++        btn.onclick = () => {
++          const box = btn.closest(".sources");
++          box.classList.toggle("open");
++          btn.lastElementChild.textContent = box.classList.contains("open") ? "collapse" : "expand";
++        };
++      });
++
++      $$(".cite").forEach((chip) => {
++        chip.onclick = () => {
++          const box = chip.closest(".answer").querySelector(".sources");
++          box.classList.add("open");
++          box.querySelector(".sources-head").lastElementChild.textContent = "collapse";
++          box.scrollIntoView({ behavior: "smooth", block: "nearest" });
++        };
++      });
++
++      $$("#doc-rows tr").forEach((row) => {
++        row.onclick = () => {
++          $$("#doc-rows tr").forEach((r) => r.classList.remove("on"));
++          row.classList.add("on");
++        };
++      });
++
++      $$(".chips .chip").forEach((chip) => {
++        chip.onclick = () => {
++          const group = chip.parentElement;
++          Array.from(group.children).forEach((c) => c.classList.remove("on"));
++          chip.classList.add("on");
++        };
++      });
++
++      $("#upload-open").onclick = () => $("#upload-modal").classList.add("on");
++      $$("[data-close-modal]").forEach((btn) => {
++        btn.onclick = () => $("#upload-modal").classList.remove("on");
++      });
++      $("#upload-modal").onclick = (e) => {
++        if (e.target.id === "upload-modal") $("#upload-modal").classList.remove("on");
++      };
++
++      $$("#sessions button").forEach((btn) => {
++        btn.onclick = () => {
++          $$("#sessions button").forEach((b) => b.classList.remove("on"));
++          btn.classList.add("on");
++          showPage("ask");
++        };
++      });
++
++      const providerSelect = $("#provider-select");
++      const providerNotice = $("#provider-notice");
++      const gatewayToggle = $("#gateway-down-toggle");
++      const askGatewayError = $("#ask-gateway-error");
++      const askKeywordNotice = $("#ask-keyword-notice");
++
++      function refreshProviderNotice() {
++        const publicSelected = providerSelect.selectedIndex > 0;
++        const gatewayDown = document.body.classList.contains("gateway-down");
++        if (gatewayDown && publicSelected) {
++          providerNotice.textContent =
++            "Public model selected while gateway is down: chat may still work; retrieved snippets may leave the intranet. Semantic search uses keyword-only until embedding recovers.";
++          providerNotice.style.color = "var(--amber)";
++        } else if (publicSelected) {
++          providerNotice.textContent =
++            "Public model selected: retrieved document snippets may leave the intranet with this Ask. Answers remain assistive—open citations before relying on them.";
++          providerNotice.style.color = "var(--amber)";
++        } else {
++          providerNotice.textContent =
++            "Answers are assistive output grounded in uploaded documents. Always open the citation before relying on it.";
++          providerNotice.style.color = "";
++        }
++        if (askGatewayError && askKeywordNotice) {
++          const showInternalError = gatewayDown && !publicSelected;
++          askGatewayError.style.display = showInternalError ? "flex" : "none";
++          askKeywordNotice.style.display = gatewayDown && publicSelected ? "flex" : "none";
++        }
++      }
++
++      function setGatewayDown(on) {
++        document.body.classList.toggle("gateway-down", on);
++        refreshProviderNotice();
++      }
++
++      providerSelect.onchange = refreshProviderNotice;
++      gatewayToggle.onchange = () => setGatewayDown(gatewayToggle.checked);
++      refreshProviderNotice();
++    </script>
++  </body>
++</html>
+-- 
+2.43.0
+
