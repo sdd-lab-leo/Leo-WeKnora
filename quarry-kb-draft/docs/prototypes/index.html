@@ -465,9 +465,10 @@
       .banner-error { background: var(--red-soft); color: var(--red); border: 1px solid #f2cdc9; }
       .banner-warn { background: var(--amber-soft); color: var(--amber); border: 1px solid #f0dfc2; }
       .banner-ok { background: var(--green-soft); color: var(--green); border: 1px solid #c6e9d6; }
-      .degrade-only { display: none; }
-      body.gateway-down .degrade-only { display: flex; }
-      body.gateway-down .healthy-only { display: none; }
+      .degrade-only { display: none !important; }
+      body.gateway-down .banner.degrade-only { display: flex !important; }
+      body.gateway-down tr.degrade-only { display: table-row !important; }
+      body.gateway-down .healthy-only { display: none !important; }
       .topbar-tools { display: flex; align-items: center; gap: 10px; }
       .toggle-chip {
         display: inline-flex;
@@ -828,7 +829,7 @@
                         <td><span class="pill pill-failed">Failed</span></td>
                         <td class="nowrap muted">2026-07-25</td>
                       </tr>
-                      <tr class="degrade-only" style="display:table-row">
+                      <tr class="degrade-only">
                         <td class="doc-title">Weekly Ops Notes (mock)</td>
                         <td>MD</td>
                         <td>editor.a</td>

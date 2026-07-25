@@ -21,6 +21,7 @@ No install step, build system, server, CDN, or framework is required.
 - Role preview (`Admin` / `Editor` / `Viewer`) and how capability differences appear in the UI
 - Ask screen with inline citation markers, expandable sources, and a chat provider/model selector (internal + multiple public; FR-14h / D-06)
 - Public-provider egress notice on the Ask composer when a public model is selected
+- **Simulate gateway down** toggle (D-07): Ask error / keyword-only notice, Knowledge soft banner, Upload accept-then-fail copy
 - Explicit "no basis found" answer state (requirement FR-35)
 - Knowledge list with ingestion status pills (`Queued`, `Parsing`, `Indexed`, `Failed`)
 - Document detail with chunk preview, ingestion timeline, and Editor-only actions
