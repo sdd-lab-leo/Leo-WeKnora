@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 0.1 |
+| Version | 0.1.1 |
 | Status | Draft |
 | Layer | Requirements input (`docs/01-requirements/`) |
 | Owner | Product owner (TBD) |
@@ -13,6 +13,13 @@
 | Prototype | `docs/prototypes/index.html` (mock, no backend) |
 
 This document defines what v0.1 must deliver. It is the upstream input for slice SDD generation. It does not replace slice requirements, spec, architecture, design, or tasks.
+
+### Revision History
+
+| Rev | Change |
+|---|---|
+| 0.1 | Initial specification |
+| 0.1.1 | Resolved platform decisions D-01 (internal model gateway), D-02 (OCR in scope), D-03 (no external embedding). Scope, requirements, NFRs, security rules, and acceptance criteria updated accordingly. |
 
 ---
 
@@ -74,23 +81,41 @@ Role vocabulary is shared by frontend and backend (`Admin`, `Editor`, `Viewer`) 
 
 ---
 
-## 3. Scope
+## 3. Platform Decisions
 
-### 3.1 In Scope (v0.1)
+These decisions are settled and constrain every downstream slice. Each requires an ADR in the destination repository before implementation.
+
+| ID | Decision | Consequence |
+|---|---|---|
+| D-01 | Chat/completion models are consumed **only** through the company internal model gateway. | The LLM adapter targets one internal OpenAI-compatible base URL. No public provider credentials exist in any environment. Availability and rate limits of the gateway become product constraints. |
+| D-02 | Scanned and image-based documents **are in scope**; OCR is required. | Ingestion needs an OCR-capable parse path, a longer processing budget, per-document parse-mode reporting, and quality expectations that differ from native text. |
+| D-03 | Document text **must not** be sent to any external embedding service. | Embeddings are produced inside the intranet: either the internal gateway's embedding endpoint or a locally hosted embedding model. Vector dimension is dictated by that model, not by a public API default. |
+
+### 3.0.1 Derived Constraints
+
+- All model traffic (chat, embedding, OCR-assist if model-based) stays inside the intranet perimeter.
+- The deployment must function with no egress to public model providers.
+- Embedding model choice fixes the pgvector column dimension; changing the model later requires a re-index migration.
+- OCR work is CPU/GPU intensive and must not block interactive question answering.
+
+## 4. Scope
+
+### 4.1 In Scope (v0.1)
 
 1. Password-based authentication with JWT sessions; accounts created by an Admin.
 2. One department knowledge collection (no multi-workspace, no per-user private collections).
-3. Document upload for Markdown, plain text, PDF, and DOCX.
-4. Ingestion pipeline with visible status: queued, parsing, indexed, failed.
-5. Chunking plus embedding storage in PostgreSQL with pgvector.
-6. Hybrid retrieval (keyword plus vector) with fused ranking.
-7. Answer generation that must include citations to retrieved chunks.
-8. Source inspection: open the cited snippet and its parent document.
-9. Personal session history (a user sees only their own sessions).
-10. Minimal admin surface: user list, role assignment, activate/deactivate.
-11. Minimal audit trail for upload, delete, reindex, and role change.
+3. Document upload for Markdown, plain text, PDF (including scanned / image-based), and DOCX.
+4. Ingestion pipeline with OCR for pages that lack an extractable text layer; status visible as queued, parsing, indexed, or failed.
+5. Chunking plus **intranet-only** embedding storage in PostgreSQL with pgvector.
+6. Chat/completion and embedding traffic exclusively through company intranet endpoints (internal model gateway and/or locally hosted embedding).
+7. Hybrid retrieval (keyword plus vector) with fused ranking.
+8. Answer generation that must include citations to retrieved chunks.
+9. Source inspection: open the cited snippet and its parent document.
+10. Personal session history (a user sees only their own sessions).
+11. Minimal admin surface: user list, role assignment, activate/deactivate.
+12. Minimal audit trail for upload, delete, reindex, and role change.
 
-### 3.2 Out Of Scope (v0.1)
+### 4.2 Out Of Scope (v0.1)
 
 | Deferred item | Reason |
 |---|---|
@@ -100,20 +125,20 @@ Role vocabulary is shared by frontend and backend (`Admin`, `Editor`, `Viewer`) 
 | Multiple knowledge bases / workspaces | Single department pilot does not need isolation yet |
 | IM channels (WeCom, Feishu, Slack) | Web-first validation |
 | Website embed widget, public API keys | No external integration in pilot |
-| OCR for scanned PDFs | Pending decision OQ-02 |
+| Public / third-party model providers for chat or embedding | Forbidden by D-01 and D-03 |
 | Object storage backend (MinIO/S3) | Local disk volume is sufficient for the pilot |
 | Streaming token output | Nice to have; not an acceptance blocker for v0.1 |
 | Shared or team-visible sessions | Privacy expectations unclear in pilot |
 
-Deferring an item does not mean designing against it. Data model and adapter boundaries must not block these items later.
+Deferring an item does not mean designing against it. Data model and adapter boundaries must not block later items (except public-model egress, which is a hard prohibition).
 
 ---
 
-## 4. Functional Requirements
+## 5. Functional Requirements
 
 Requirement IDs are stable and should be referenced by downstream slice documents.
 
-### 4.1 Authentication And Accounts
+### 5.1 Authentication And Accounts
 
 | ID | Requirement |
 |---|---|
@@ -125,7 +150,7 @@ Requirement IDs are stable and should be referenced by downstream slice document
 | FR-06 | The user record reserves an external identity field for later SSO mapping without schema redesign. |
 | FR-07 | Authorization is enforced server-side; frontend guards are a usability layer only. |
 
-### 4.2 Knowledge Ingestion
+### 5.2 Knowledge Ingestion
 
 | ID | Requirement |
 |---|---|
@@ -134,14 +159,17 @@ Requirement IDs are stable and should be referenced by downstream slice document
 | FR-12 | Each uploaded document records title, original filename, type, size, uploader, and upload time. |
 | FR-13 | Binary content is stored on a server volume path; the database stores metadata and path only. |
 | FR-14 | Ingestion produces text content, chunks, and embeddings for retrieval. |
+| FR-14a | When a PDF page has no extractable text layer, the parser runs an OCR path and records that OCR was used for that document (or page range). |
+| FR-14b | Embeddings are produced only by an intranet embedding endpoint (internal gateway or locally hosted model); the system never calls a public embedding API with document text. |
+| FR-14c | Chat/completion calls are issued only to the company internal model gateway. |
 | FR-15 | Document status is observable as `queued`, `parsing`, `indexed`, or `failed`. |
-| FR-16 | A failed document shows a human-readable failure reason. |
+| FR-16 | A failed document shows a human-readable failure reason (including OCR/parse failures). |
 | FR-17 | An Editor or Admin can reindex a document without re-uploading it. |
 | FR-18 | An Editor or Admin can delete a document; its chunks and embeddings are removed from retrieval. |
-| FR-19 | A user can view a document's metadata and a preview of its chunks. |
+| FR-19 | A user can view a document's metadata, parse mode (native text vs OCR), and a preview of its chunks. |
 | FR-20 | The knowledge list supports text search by title and filtering by status. |
 
-### 4.3 Ask (Retrieval And Answering)
+### 5.3 Ask (Retrieval And Answering)
 
 | ID | Requirement |
 |---|---|
@@ -157,7 +185,7 @@ Requirement IDs are stable and should be referenced by downstream slice document
 | FR-39 | A user cannot read another user's sessions. |
 | FR-40 | The Ask interface exposes only RAG mode in v0.1; Agent mode is visible but disabled and clearly labeled as later. |
 
-### 4.4 Administration And Audit
+### 5.4 Administration And Audit
 
 | ID | Requirement |
 |---|---|
@@ -169,55 +197,58 @@ Requirement IDs are stable and should be referenced by downstream slice document
 
 ---
 
-## 5. Key Flows
+## 6. Key Flows
 
-### 5.1 Ingest Flow
+### 6.1 Ingest Flow
 
 ```text
 Editor selects files
   -> validation (type, size)
   -> stored on volume + metadata row created (status: queued)
-  -> parse to text
+  -> extract native text
+      -> if page/document has no text layer -> OCR path (D-02)
   -> chunk
-  -> embed
+  -> embed via intranet embedding endpoint only (D-03)
   -> index (status: indexed)
 ```
 
-Failure at any stage sets status `failed` with a reason and keeps the original file for retry. Reindex restarts from parse.
+Failure at any stage sets status `failed` with a reason and keeps the original file for retry. Reindex restarts from parse. OCR runs asynchronously so interactive Ask traffic is not blocked.
 
-### 5.2 Ask Flow
+### 6.2 Ask Flow
 
 ```text
 User question
   -> hybrid retrieval over indexed chunks
   -> relevance check
       -> insufficient  -> "no basis in knowledge base" response (FR-35)
-      -> sufficient    -> answer generation with citations
+      -> sufficient    -> answer generation via internal model gateway (D-01) with citations
   -> persist question + answer + citations to session
   -> user can expand sources and open the document
 ```
 
-### 5.3 Empty And Error States
+### 6.3 Empty And Error States
 
 | State | Expected behavior |
 |---|---|
 | Knowledge base empty | Ask screen guides the user to ask an Editor to upload content |
 | No relevant chunks | Explicit "no basis" answer, no invented content |
-| Model endpoint unavailable | Error banner with retry; question is not silently dropped |
+| Internal model gateway unavailable | Error banner with retry; question is not silently dropped |
+| Intranet embedding unavailable | Ingestion pauses or fails with a clear reason; Ask may still use keyword-only fallback if configured, otherwise returns a clear error |
+| OCR failed on a scanned page | Document status `failed` (or partial failure reason); Editor can reindex after fixing the file |
 | Document parsing failed | Visible failure reason plus reindex action for Editors |
 | Permission denied | Non-destructive denial state, no partial data leakage |
 
 ---
 
-## 6. Domain Concepts
+## 7. Domain Concepts
 
 Conceptual model only. Physical schema belongs to slice data-model documents.
 
 | Concept | Purpose | Key attributes (conceptual) |
 |---|---|---|
 | User | Identity and authorization | identifier, display name, role, status, password hash, reserved external identity |
-| Document | Ingested source artifact | title, source filename, type, size, uploader, status, failure reason, timestamps |
-| Chunk | Retrievable unit derived from a document | document reference, ordinal, text, location label, embedding |
+| Document | Ingested source artifact | title, source filename, type, size, uploader, status, parse mode (`native` / `ocr` / `mixed`), failure reason, timestamps |
+| Chunk | Retrievable unit derived from a document | document reference, ordinal, text, location label, embedding (intranet-produced) |
 | Session | A user's conversation container | owner, title, timestamps |
 | Message | A question or answer turn | session reference, role, content, timestamp |
 | Citation | Link from an answer to a chunk | message reference, chunk reference, marker, snippet |
@@ -225,22 +256,24 @@ Conceptual model only. Physical schema belongs to slice data-model documents.
 
 ---
 
-## 7. Non-Functional Requirements
+## 8. Non-Functional Requirements
 
 | ID | Requirement |
 |---|---|
 | NFR-01 | Ten concurrent users asking questions must not cause visible degradation of the web interface. |
-| NFR-02 | Target first visible answer content within five seconds under normal model gateway latency. |
+| NFR-02 | Target first visible answer content within five seconds under normal internal model gateway latency. |
 | NFR-03 | Maximum single upload size is 50 MB. |
-| NFR-04 | A typical text-based document (under 100 pages) reaches `indexed` within five minutes of upload. |
-| NFR-05 | The pilot deployment runs on a single intranet host using Docker Compose. |
-| NFR-06 | The system remains usable when the LLM endpoint is temporarily unavailable: browsing knowledge and reading documents must still work. |
+| NFR-04 | A typical native-text document (under 100 pages) reaches `indexed` within five minutes of upload. |
+| NFR-04a | A typical OCR document (under 50 pages of scanned content) reaches `indexed` within thirty minutes on the pilot host, without blocking Ask for other users. |
+| NFR-05 | The pilot deployment runs on a single intranet host using Docker Compose, with no required egress to public model providers. |
+| NFR-06 | The system remains usable when the internal chat gateway is temporarily unavailable: browsing knowledge and reading documents must still work. |
 | NFR-07 | Restart of the application must not lose uploaded documents, indexed chunks, or session history. |
 | NFR-08 | Backup must be possible by copying the database dump plus the upload volume. |
+| NFR-09 | Embedding model identity and vector dimension are configuration values; changing the embedding model requires a documented reindex of affected documents. |
 
 ---
 
-## 8. Security And Data Safety
+## 9. Security And Data Safety
 
 | ID | Requirement |
 |---|---|
@@ -251,10 +284,12 @@ Conceptual model only. Physical schema belongs to slice data-model documents.
 | SEC-05 | Model prompts must not be logged in full when they contain confidential document text. |
 | SEC-06 | Deleting a document removes it from retrieval results immediately. |
 | SEC-07 | Answers are treated as assistive output; the product must not present model output as an approved company record (see lesson L-006). |
+| SEC-08 | Document text and page images are never sent to public or third-party embedding, OCR-as-a-service, or chat endpoints outside the company intranet. |
+| SEC-09 | Runtime configuration for model and embedding base URLs is restricted to intranet hosts; misconfiguration that points to a public provider is a deployment defect. |
 
 ---
 
-## 9. Acceptance Criteria
+## 10. Acceptance Criteria
 
 v0.1 is accepted when a live demo on the pilot host satisfies all of the following.
 
@@ -263,6 +298,7 @@ v0.1 is accepted when a live demo on the pilot host satisfies all of the followi
 | AC-01 | Three accounts exist (Admin, Editor, Viewer) and each role's capability matrix in section 2.2 is observably enforced. |
 | AC-02 | A Viewer attempting to upload or delete is denied by the API, not only hidden in the UI. |
 | AC-03 | Ten representative department documents are uploaded and all reach `indexed`, or any failure shows an actionable reason. |
+| AC-03a | At least one scanned / image-based PDF is uploaded and reaches `indexed` via the OCR path; its parse mode is visible as OCR (or mixed). |
 | AC-04 | For ten representative business questions, at least eight answers carry citations that a reviewer confirms as relevant and traceable to the correct document. |
 | AC-05 | At least one question with no supporting content returns an explicit "no basis" answer rather than an invented one. |
 | AC-06 | A deleted document's content no longer appears in new answers or citations. |
@@ -270,10 +306,12 @@ v0.1 is accepted when a live demo on the pilot host satisfies all of the followi
 | AC-08 | Session history persists across logout, login, and application restart. |
 | AC-09 | Audit list shows entries for upload, delete, reindex, and role change performed during the demo. |
 | AC-10 | The system is deployed and started from the documented Compose flow on a single host. |
+| AC-11 | Chat and embedding traffic during the demo is confirmed to target only intranet endpoints (configuration review or network observation). |
+| AC-12 | No public provider API key for chat or embedding is present in the deployment configuration. |
 
 ---
 
-## 10. Pilot Success Metrics
+## 11. Pilot Success Metrics
 
 Adoption signals to review after the pilot period. These are not acceptance gates.
 
@@ -283,42 +321,52 @@ Adoption signals to review after the pilot period. These are not acceptance gate
 | Questions per week | Whether it becomes a habit |
 | Share of answers where the user opened a citation | Whether citations are trusted and used |
 | Documents indexed | Whether maintainers keep feeding it |
+| OCR documents indexed successfully | Whether scanned corpus is usable |
 | Reported wrong answers | Quality signal for retrieval tuning |
 
 ---
 
-## 11. Open Questions
+## 12. Resolved Decisions And Remaining Open Questions
+
+### 12.1 Resolved (2026-07-25)
+
+| Former ID | Decision | Locked as |
+|---|---|---|
+| OQ-01 | Chat/completion uses the company **internal model gateway** only | D-01 |
+| OQ-02 | Scanned / image-based PDFs are in scope; **OCR is required** | D-02 |
+| OQ-06 | Department document text **must not** be sent to any external embedding service | D-03 |
+
+### 12.2 Still Open
 
 | ID | Question | Impact if unresolved |
 |---|---|---|
-| OQ-01 | Which model endpoint will the pilot use: an existing internal gateway, or a public API allowed by policy? | Blocks LLM adapter configuration and latency assumptions |
-| OQ-02 | Are scanned or image-based PDFs in scope for the pilot corpus (would require OCR)? | Changes parsing selection and NFR-04 |
-| OQ-03 | Which team is the first pilot group and what corpus do they contribute? | Blocks AC-03 and AC-04 test material |
+| OQ-03 | Which team is the first pilot group and what corpus do they contribute? | Blocks AC-03 / AC-03a / AC-04 test material |
 | OQ-04 | Is there a designated company UI component library for intranet apps? | Frontend standards require an ADR before adopting a new kit |
 | OQ-05 | Which retention rule applies to session history and audit entries? | Affects data model and later compliance requests |
-| OQ-06 | Is embedding department documents into a third-party model endpoint acceptable under current policy? | May force a local embedding model |
+| OQ-07 | Which intranet embedding option will the pilot use: the internal gateway's embedding API, or a locally hosted embedding model on the pilot host? | Fixes vector dimension and Compose topology for `knowledge-ingest` |
+| OQ-08 | Which OCR engine runs inside the intranet (gateway multimodal OCR, on-host OCR service, or both)? | Fixes parse adapter selection and GPU/CPU sizing |
 
-OQ-01, OQ-02, and OQ-06 should be answered before the ingestion and ask slices are designed.
+OQ-07 and OQ-08 must be answered before the `knowledge-ingest` slice is designed. They do not reopen D-01–D-03.
 
 ---
 
-## 12. Proposed Slice Decomposition
+## 13. Proposed Slice Decomposition
 
 Downstream slices derived from this specification. Each slice gets its own full SDD chain.
 
 | Order | Slice key | Covers | Primary requirements |
 |---|---|---|---|
-| 1 | `repo-bootstrap` | Frontend shell, backend health endpoint, database and migration skeleton, Compose, env template | Enables all others |
+| 1 | `repo-bootstrap` | Frontend shell, backend health endpoint, database and migration skeleton, Compose, env template (intranet-only model URLs) | Enables all others |
 | 2 | `auth-password-jwt` | Login, session token, roles, account administration | FR-01 to FR-07, FR-50 to FR-51 |
-| 3 | `knowledge-ingest` | Upload, parse, chunk, embed, status, reindex, delete | FR-10 to FR-20 |
-| 4 | `ask-rag` | Hybrid retrieval, cited answering, sessions, no-basis behavior | FR-30 to FR-40 |
+| 3 | `knowledge-ingest` | Upload, native parse + OCR, chunk, intranet embed, status, reindex, delete | FR-10 to FR-20, FR-14a–c, D-02, D-03 |
+| 4 | `ask-rag` | Hybrid retrieval, cited answering via internal gateway, sessions, no-basis behavior | FR-30 to FR-40, D-01 |
 | 5 | `audit-minimal` | Audit entries and Admin list view | FR-52 to FR-54 |
 
-Suggested sequencing rationale: authentication before ingestion so uploads have an owner, and ingestion before answering so retrieval has content.
+Suggested sequencing rationale: authentication before ingestion so uploads have an owner, and ingestion before answering so retrieval has content. OCR and intranet embedding are part of `knowledge-ingest`, not a separate slice.
 
 ---
 
-## 13. Roadmap After v0.1
+## 14. Roadmap After v0.1
 
 Not commitments; direction only.
 
@@ -333,8 +381,9 @@ Not commitments; direction only.
 
 ---
 
-## 14. Traceability Notes
+## 15. Traceability Notes
 
-- Downstream slice requirements must reference the FR / NFR / SEC / AC identifiers used here.
-- Changes to scope in section 3 require updating this document before the affected slice is implemented.
+- Downstream slice requirements must reference the FR / NFR / SEC / AC / D identifiers used here.
+- Changes to scope in section 4, or reversal of D-01 / D-02 / D-03, require updating this document before the affected slice is implemented.
 - Product boundary claims must stay consistent with `docs/00-context/product-positioning.md` and ADR-0002.
+- Destination repository should add ADRs for D-01 (internal gateway), D-02 (OCR in scope), and D-03 (no external embedding) before `knowledge-ingest` / `ask-rag` implementation.

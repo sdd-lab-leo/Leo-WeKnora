@@ -23,8 +23,17 @@ cp -R quarry-kb-draft/docs/. /path/to/quarry-kb/docs/
 - Both files are English-only, matching the repository language rule.
 - Content is mock-only: no real company documents, names, or systems.
 
-## Open Questions Carried In The Spec
+## Platform Decisions Locked In Spec v0.1.1
 
-`OQ-01` model endpoint, `OQ-02` scanned PDF / OCR, `OQ-03` pilot group and corpus, `OQ-04` UI component library, `OQ-05` retention, `OQ-06` external embedding policy.
+| ID | Decision |
+|---|---|
+| D-01 | Chat/completion via company **internal model gateway** only |
+| D-02 | Scanned PDFs in scope; **OCR required** |
+| D-03 | Document text **must not** go to any external embedding service |
 
-`OQ-01`, `OQ-02`, and `OQ-06` should be answered before the ingestion and ask slices are designed.
+## Still Open Before `knowledge-ingest` Design
+
+- `OQ-03` pilot group and corpus
+- `OQ-07` intranet embedding option: gateway embedding API vs locally hosted model
+- `OQ-08` which intranet OCR engine
+- `OQ-04` UI component library, `OQ-05` retention (less urgent for ingest design)
