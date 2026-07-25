@@ -6,7 +6,7 @@ Static, mock-only prototypes for Quarry KB. These files illustrate intended prod
 
 | File | Scope |
 |---|---|
-| `index.html` | v0.1 walkthrough: Login, Ask, Knowledge, Document detail, Admin/Users |
+| `index.html` | v0.1 walkthrough: Login, Ask (provider switcher), Knowledge, Document detail, Admin (users + chat providers) |
 
 ## How To Open
 
@@ -19,11 +19,12 @@ No install step, build system, server, CDN, or framework is required.
 ## What The Prototype Demonstrates
 
 - Role preview (`Admin` / `Editor` / `Viewer`) and how capability differences appear in the UI
-- Ask screen with inline citation markers and an expandable sources panel
+- Ask screen with inline citation markers, expandable sources, and a chat provider/model selector (internal + multiple public; FR-14h / D-06)
+- Public-provider egress notice on the Ask composer when a public model is selected
 - Explicit "no basis found" answer state (requirement FR-35)
 - Knowledge list with ingestion status pills (`Queued`, `Parsing`, `Indexed`, `Failed`)
 - Document detail with chunk preview, ingestion timeline, and Editor-only actions
-- Admin user list with role assignment and a minimal audit list
+- Admin user list, multi-provider chat settings mock, and a minimal audit list
 - Deliberately disabled `Wiki` navigation and `Agent` mode, labeled as later
 
 ## Deliberate Omissions
