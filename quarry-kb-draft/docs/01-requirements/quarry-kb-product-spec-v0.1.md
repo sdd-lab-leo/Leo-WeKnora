@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 0.1.1 |
+| Version | 0.1.2 |
 | Status | Draft |
 | Layer | Requirements input (`docs/01-requirements/`) |
 | Owner | Product owner (TBD) |
@@ -19,7 +19,8 @@ This document defines what v0.1 must deliver. It is the upstream input for slice
 | Rev | Change |
 |---|---|
 | 0.1 | Initial specification |
-| 0.1.1 | Resolved platform decisions D-01 (internal model gateway), D-02 (OCR in scope), D-03 (no external embedding). Scope, requirements, NFRs, security rules, and acceptance criteria updated accordingly. |
+| 0.1.1 | Resolved D-01 (internal chat gateway), D-02 (OCR in scope), D-03 (no external embedding). |
+| 0.1.2 | Resolved D-04 (embedding via internal gateway API) and D-05 (OCR via gateway multimodal). Closed OQ-07 / OQ-08. |
 
 ---
 
@@ -89,14 +90,17 @@ These decisions are settled and constrain every downstream slice. Each requires 
 |---|---|---|
 | D-01 | Chat/completion models are consumed **only** through the company internal model gateway. | The LLM adapter targets one internal OpenAI-compatible base URL. No public provider credentials exist in any environment. Availability and rate limits of the gateway become product constraints. |
 | D-02 | Scanned and image-based documents **are in scope**; OCR is required. | Ingestion needs an OCR-capable parse path, a longer processing budget, per-document parse-mode reporting, and quality expectations that differ from native text. |
-| D-03 | Document text **must not** be sent to any external embedding service. | Embeddings are produced inside the intranet: either the internal gateway's embedding endpoint or a locally hosted embedding model. Vector dimension is dictated by that model, not by a public API default. |
+| D-03 | Document text **must not** be sent to any external embedding service. | All embedding traffic stays inside the intranet perimeter. |
+| D-04 | Embeddings are produced through the **internal gateway embedding API** (not a locally hosted embedding process on the Quarry host). | One gateway base URL serves chat and embeddings (possibly different model ids). Vector dimension is dictated by the gateway embedding model; changing it requires a re-index migration. Compose does not need an on-host embedding container. |
+| D-05 | OCR for scanned/image pages is performed through the **internal gateway multimodal** capability (page images or PDFs sent to the gateway OCR/VLM path). | The parse adapter extracts pages, calls the gateway multimodal OCR endpoint, and never uses a public OCR SaaS or a separate on-host OCR stack in v0.1. Gateway latency and multimodal rate limits constrain NFR-04a. |
 
-### 3.0.1 Derived Constraints
+### 3.1 Derived Constraints
 
-- All model traffic (chat, embedding, OCR-assist if model-based) stays inside the intranet perimeter.
+- All model traffic (chat, embedding, multimodal OCR) stays on the company internal gateway.
 - The deployment must function with no egress to public model providers.
-- Embedding model choice fixes the pgvector column dimension; changing the model later requires a re-index migration.
-- OCR work is CPU/GPU intensive and must not block interactive question answering.
+- The Quarry host depends on gateway availability for Ask, embedding during ingest, and OCR during ingest.
+- Embedding model id + dimension are configuration values; changing them requires a documented reindex.
+- Multimodal OCR work is asynchronous and must not block interactive question answering.
 
 ## 4. Scope
 
@@ -106,8 +110,8 @@ These decisions are settled and constrain every downstream slice. Each requires 
 2. One department knowledge collection (no multi-workspace, no per-user private collections).
 3. Document upload for Markdown, plain text, PDF (including scanned / image-based), and DOCX.
 4. Ingestion pipeline with OCR for pages that lack an extractable text layer; status visible as queued, parsing, indexed, or failed.
-5. Chunking plus **intranet-only** embedding storage in PostgreSQL with pgvector.
-6. Chat/completion and embedding traffic exclusively through company intranet endpoints (internal model gateway and/or locally hosted embedding).
+5. Chunking plus embedding storage in PostgreSQL with pgvector; embeddings from the **internal gateway embedding API** only.
+6. Chat/completion, embedding, and multimodal OCR traffic exclusively through the **company internal model gateway**.
 7. Hybrid retrieval (keyword plus vector) with fused ranking.
 8. Answer generation that must include citations to retrieved chunks.
 9. Source inspection: open the cited snippet and its parent document.
@@ -159,9 +163,10 @@ Requirement IDs are stable and should be referenced by downstream slice document
 | FR-12 | Each uploaded document records title, original filename, type, size, uploader, and upload time. |
 | FR-13 | Binary content is stored on a server volume path; the database stores metadata and path only. |
 | FR-14 | Ingestion produces text content, chunks, and embeddings for retrieval. |
-| FR-14a | When a PDF page has no extractable text layer, the parser runs an OCR path and records that OCR was used for that document (or page range). |
-| FR-14b | Embeddings are produced only by an intranet embedding endpoint (internal gateway or locally hosted model); the system never calls a public embedding API with document text. |
+| FR-14a | When a PDF page has no extractable text layer, the parser sends that page (or document) to the **internal gateway multimodal OCR** path and records that OCR was used for that document (or page range). |
+| FR-14b | Embeddings are produced only via the **internal gateway embedding API**; the system never calls a public embedding API and does not run a local embedding server in v0.1. |
 | FR-14c | Chat/completion calls are issued only to the company internal model gateway. |
+| FR-14d | Gateway base URL(s), chat model id, embedding model id, and multimodal OCR model/path are configuration values; no provider SDK hard-codes a public cloud endpoint. |
 | FR-15 | Document status is observable as `queued`, `parsing`, `indexed`, or `failed`. |
 | FR-16 | A failed document shows a human-readable failure reason (including OCR/parse failures). |
 | FR-17 | An Editor or Admin can reindex a document without re-uploading it. |
@@ -206,13 +211,15 @@ Editor selects files
   -> validation (type, size)
   -> stored on volume + metadata row created (status: queued)
   -> extract native text
-      -> if page/document has no text layer -> OCR path (D-02)
+      -> if page/document has no text layer
+         -> render page image(s)
+         -> gateway multimodal OCR (D-05)
   -> chunk
-  -> embed via intranet embedding endpoint only (D-03)
+  -> embed via gateway embedding API (D-04)
   -> index (status: indexed)
 ```
 
-Failure at any stage sets status `failed` with a reason and keeps the original file for retry. Reindex restarts from parse. OCR runs asynchronously so interactive Ask traffic is not blocked.
+Failure at any stage sets status `failed` with a reason and keeps the original file for retry. Reindex restarts from parse. Gateway multimodal OCR and embedding calls run in the ingest worker path so interactive Ask traffic is not blocked.
 
 ### 6.2 Ask Flow
 
@@ -233,8 +240,8 @@ User question
 | Knowledge base empty | Ask screen guides the user to ask an Editor to upload content |
 | No relevant chunks | Explicit "no basis" answer, no invented content |
 | Internal model gateway unavailable | Error banner with retry; question is not silently dropped |
-| Intranet embedding unavailable | Ingestion pauses or fails with a clear reason; Ask may still use keyword-only fallback if configured, otherwise returns a clear error |
-| OCR failed on a scanned page | Document status `failed` (or partial failure reason); Editor can reindex after fixing the file |
+| Gateway embedding unavailable | Ingestion pauses or fails with a clear reason; Ask may still use keyword-only fallback if configured, otherwise returns a clear error |
+| Gateway multimodal OCR failed / timed out | Document status `failed` (or partial failure reason); Editor can reindex when the gateway recovers |
 | Document parsing failed | Visible failure reason plus reindex action for Editors |
 | Permission denied | Non-destructive denial state, no partial data leakage |
 
@@ -264,8 +271,8 @@ Conceptual model only. Physical schema belongs to slice data-model documents.
 | NFR-02 | Target first visible answer content within five seconds under normal internal model gateway latency. |
 | NFR-03 | Maximum single upload size is 50 MB. |
 | NFR-04 | A typical native-text document (under 100 pages) reaches `indexed` within five minutes of upload. |
-| NFR-04a | A typical OCR document (under 50 pages of scanned content) reaches `indexed` within thirty minutes on the pilot host, without blocking Ask for other users. |
-| NFR-05 | The pilot deployment runs on a single intranet host using Docker Compose, with no required egress to public model providers. |
+| NFR-04a | A typical OCR document (under 50 pages of scanned content) reaches `indexed` within thirty minutes under normal gateway multimodal latency, without blocking Ask for other users. |
+| NFR-05 | The pilot deployment runs on a single intranet host using Docker Compose, with no required egress to public model providers and no on-host embedding or OCR containers in v0.1. |
 | NFR-06 | The system remains usable when the internal chat gateway is temporarily unavailable: browsing knowledge and reading documents must still work. |
 | NFR-07 | Restart of the application must not lose uploaded documents, indexed chunks, or session history. |
 | NFR-08 | Backup must be possible by copying the database dump plus the upload volume. |
@@ -306,8 +313,9 @@ v0.1 is accepted when a live demo on the pilot host satisfies all of the followi
 | AC-08 | Session history persists across logout, login, and application restart. |
 | AC-09 | Audit list shows entries for upload, delete, reindex, and role change performed during the demo. |
 | AC-10 | The system is deployed and started from the documented Compose flow on a single host. |
-| AC-11 | Chat and embedding traffic during the demo is confirmed to target only intranet endpoints (configuration review or network observation). |
-| AC-12 | No public provider API key for chat or embedding is present in the deployment configuration. |
+| AC-11 | Chat, embedding, and multimodal OCR traffic during the demo is confirmed to target only the internal gateway (configuration review or network observation). |
+| AC-12 | No public provider API key for chat, embedding, or OCR is present in the deployment configuration. |
+| AC-13 | Configuration documents the gateway embedding model id and the gateway multimodal OCR path used in the pilot. |
 
 ---
 
@@ -335,6 +343,8 @@ Adoption signals to review after the pilot period. These are not acceptance gate
 | OQ-01 | Chat/completion uses the company **internal model gateway** only | D-01 |
 | OQ-02 | Scanned / image-based PDFs are in scope; **OCR is required** | D-02 |
 | OQ-06 | Department document text **must not** be sent to any external embedding service | D-03 |
+| OQ-07 | Embeddings use the **internal gateway embedding API** | D-04 |
+| OQ-08 | OCR uses the **internal gateway multimodal** path | D-05 |
 
 ### 12.2 Still Open
 
@@ -343,10 +353,9 @@ Adoption signals to review after the pilot period. These are not acceptance gate
 | OQ-03 | Which team is the first pilot group and what corpus do they contribute? | Blocks AC-03 / AC-03a / AC-04 test material |
 | OQ-04 | Is there a designated company UI component library for intranet apps? | Frontend standards require an ADR before adopting a new kit |
 | OQ-05 | Which retention rule applies to session history and audit entries? | Affects data model and later compliance requests |
-| OQ-07 | Which intranet embedding option will the pilot use: the internal gateway's embedding API, or a locally hosted embedding model on the pilot host? | Fixes vector dimension and Compose topology for `knowledge-ingest` |
-| OQ-08 | Which OCR engine runs inside the intranet (gateway multimodal OCR, on-host OCR service, or both)? | Fixes parse adapter selection and GPU/CPU sizing |
+| OQ-09 | Exact gateway base URL(s), chat model id, embedding model id, multimodal OCR model/path, and rate-limit expectations for the pilot | Needed for `.env.example` and adapter smoke tests; does not reopen D-01–D-05 |
 
-OQ-07 and OQ-08 must be answered before the `knowledge-ingest` slice is designed. They do not reopen D-01–D-03.
+`knowledge-ingest` and `ask-rag` may proceed to SDD design against D-01–D-05. Concrete gateway identifiers (OQ-09) can land in env templates during `repo-bootstrap` / ingest design without changing product scope.
 
 ---
 
@@ -356,13 +365,13 @@ Downstream slices derived from this specification. Each slice gets its own full 
 
 | Order | Slice key | Covers | Primary requirements |
 |---|---|---|---|
-| 1 | `repo-bootstrap` | Frontend shell, backend health endpoint, database and migration skeleton, Compose, env template (intranet-only model URLs) | Enables all others |
+| 1 | `repo-bootstrap` | Frontend shell, backend health endpoint, database and migration skeleton, Compose, env template for gateway chat/embedding/OCR settings | Enables all others |
 | 2 | `auth-password-jwt` | Login, session token, roles, account administration | FR-01 to FR-07, FR-50 to FR-51 |
-| 3 | `knowledge-ingest` | Upload, native parse + OCR, chunk, intranet embed, status, reindex, delete | FR-10 to FR-20, FR-14a–c, D-02, D-03 |
-| 4 | `ask-rag` | Hybrid retrieval, cited answering via internal gateway, sessions, no-basis behavior | FR-30 to FR-40, D-01 |
+| 3 | `knowledge-ingest` | Upload, native parse + gateway multimodal OCR, chunk, gateway embedding, status, reindex, delete | FR-10 to FR-20, FR-14a–d, D-02 to D-05 |
+| 4 | `ask-rag` | Hybrid retrieval, cited answering via internal gateway chat, sessions, no-basis behavior | FR-30 to FR-40, D-01 |
 | 5 | `audit-minimal` | Audit entries and Admin list view | FR-52 to FR-54 |
 
-Suggested sequencing rationale: authentication before ingestion so uploads have an owner, and ingestion before answering so retrieval has content. OCR and intranet embedding are part of `knowledge-ingest`, not a separate slice.
+Suggested sequencing rationale: authentication before ingestion so uploads have an owner, and ingestion before answering so retrieval has content. Gateway multimodal OCR and gateway embedding are part of `knowledge-ingest`, not separate slices.
 
 ---
 
@@ -384,6 +393,6 @@ Not commitments; direction only.
 ## 15. Traceability Notes
 
 - Downstream slice requirements must reference the FR / NFR / SEC / AC / D identifiers used here.
-- Changes to scope in section 4, or reversal of D-01 / D-02 / D-03, require updating this document before the affected slice is implemented.
+- Changes to scope in section 4, or reversal of D-01 through D-05, require updating this document before the affected slice is implemented.
 - Product boundary claims must stay consistent with `docs/00-context/product-positioning.md` and ADR-0002.
-- Destination repository should add ADRs for D-01 (internal gateway), D-02 (OCR in scope), and D-03 (no external embedding) before `knowledge-ingest` / `ask-rag` implementation.
+- Destination repository should add ADRs for D-01–D-05 (or one consolidated model-gateway ADR covering chat, embedding, and multimodal OCR) before `knowledge-ingest` / `ask-rag` implementation.
