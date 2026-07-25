@@ -463,6 +463,28 @@
       }
 
       .banner-error { background: var(--red-soft); color: var(--red); border: 1px solid #f2cdc9; }
+      .banner-warn { background: var(--amber-soft); color: var(--amber); border: 1px solid #f0dfc2; }
+      .banner-ok { background: var(--green-soft); color: var(--green); border: 1px solid #c6e9d6; }
+      .degrade-only { display: none; }
+      body.gateway-down .degrade-only { display: flex; }
+      body.gateway-down .healthy-only { display: none; }
+      .topbar-tools { display: flex; align-items: center; gap: 10px; }
+      .toggle-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: #fff;
+        font-size: 12px;
+        color: var(--ink-2);
+      }
+      body.gateway-down .toggle-chip {
+        border-color: #f0dfc2;
+        background: var(--amber-soft);
+        color: var(--amber);
+      }
 
       .back-link { display: inline-flex; gap: 6px; align-items: center; color: var(--teal); font-size: 13px; margin-bottom: 12px; }
 
@@ -505,6 +527,7 @@
   <body>
     <div class="mock-banner">
       Mock prototype — static HTML, no backend, no real company data. Illustrates Quarry KB v0.1 scope only.
+      Use the shell toggle <strong>Simulate gateway down</strong> to preview D-07 degradation.
     </div>
 
     <!-- ============ LOGIN ============ -->
@@ -578,10 +601,16 @@
       <main class="main">
         <header class="topbar">
           <h1 id="page-title">Ask</h1>
-          <div class="user-chip">
-            <span class="avatar" id="avatar">MU</span>
-            <span class="small">Mock User</span>
-            <span class="role-pill" id="role-pill">Admin</span>
+          <div class="topbar-tools">
+            <label class="toggle-chip" title="Prototype only: preview D-07">
+              <input type="checkbox" id="gateway-down-toggle" />
+              Simulate gateway down
+            </label>
+            <div class="user-chip">
+              <span class="avatar" id="avatar">MU</span>
+              <span class="small">Mock User</span>
+              <span class="role-pill" id="role-pill">Admin</span>
+            </div>
           </div>
         </header>
 
@@ -589,6 +618,21 @@
         <section class="page on" id="page-ask">
           <div class="thread">
             <div class="thread-inner">
+              <div class="banner banner-error degrade-only" id="ask-gateway-error">
+                <div>
+                  <strong>Internal gateway is unavailable.</strong>
+                  Retry, or switch to another enabled model (e.g. DeepSeek). Quarry does not
+                  auto-switch providers. Session history below stays readable.
+                </div>
+              </div>
+              <div class="banner banner-warn degrade-only" id="ask-keyword-notice" style="display:none">
+                <div>
+                  <strong>Semantic search unavailable.</strong>
+                  Using keyword match only while the gateway embedding path is down. Citations still
+                  required when chunks are found.
+                </div>
+              </div>
+
               <div class="turn-user">Who approves a change request for the payment module?</div>
 
               <div class="answer">
@@ -706,6 +750,19 @@
         <section class="page" id="page-knowledge">
           <div class="body">
             <div class="body-inner">
+              <div class="banner banner-ok healthy-only">
+                <div>
+                  <strong>Browse is independent of the gateway.</strong>
+                  Knowledge list and indexed document detail stay available even when the gateway is down.
+                </div>
+              </div>
+              <div class="banner banner-warn degrade-only">
+                <div>
+                  <strong>Internal gateway unavailable — Browse still works.</strong>
+                  Upload still accepts files, but new OCR/embedding ingest may fail. Reindex after recovery.
+                  Already-indexed documents remain fully readable.
+                </div>
+              </div>
               <div class="toolbar">
                 <input class="input grow" placeholder="Search by title…" />
                 <div class="chips">
@@ -770,6 +827,14 @@
                         <td>—</td>
                         <td><span class="pill pill-failed">Failed</span></td>
                         <td class="nowrap muted">2026-07-25</td>
+                      </tr>
+                      <tr class="degrade-only" style="display:table-row">
+                        <td class="doc-title">Weekly Ops Notes (mock)</td>
+                        <td>MD</td>
+                        <td>editor.a</td>
+                        <td>—</td>
+                        <td><span class="pill pill-failed">Failed</span></td>
+                        <td class="nowrap muted">gateway embedding unavailable</td>
                       </tr>
                       <tr>
                         <td class="doc-title">Incident Review Template (mock)</td>
@@ -1046,6 +1111,13 @@
       <div class="modal">
         <h3 style="margin: 0 0 4px; font-size: 16px">Upload documents</h3>
         <div class="small muted">Supported in v0.1: Markdown, TXT, PDF, DOCX · max 50 MB each</div>
+        <div class="banner banner-warn degrade-only" style="margin-top:12px">
+          <div>
+            <strong>Upload still accepts files.</strong>
+            Files are stored now; indexing may fail with
+            "Internal gateway unavailable — retry / reindex later" until the gateway recovers.
+          </div>
+        </div>
         <div class="drop">Drop files here, or click to choose (mock)</div>
         <div class="small muted" style="margin-top: 12px">
           Never upload real company documents into this prototype.
@@ -1180,14 +1252,41 @@
 
       const providerSelect = $("#provider-select");
       const providerNotice = $("#provider-notice");
+      const gatewayToggle = $("#gateway-down-toggle");
+      const askGatewayError = $("#ask-gateway-error");
+      const askKeywordNotice = $("#ask-keyword-notice");
+
       function refreshProviderNotice() {
         const publicSelected = providerSelect.selectedIndex > 0;
-        providerNotice.textContent = publicSelected
-          ? "Public model selected: retrieved document snippets may leave the intranet with this Ask. Answers remain assistive—open citations before relying on them."
-          : "Answers are assistive output grounded in uploaded documents. Always open the citation before relying on it.";
-        providerNotice.style.color = publicSelected ? "var(--amber)" : "";
+        const gatewayDown = document.body.classList.contains("gateway-down");
+        if (gatewayDown && publicSelected) {
+          providerNotice.textContent =
+            "Public model selected while gateway is down: chat may still work; retrieved snippets may leave the intranet. Semantic search uses keyword-only until embedding recovers.";
+          providerNotice.style.color = "var(--amber)";
+        } else if (publicSelected) {
+          providerNotice.textContent =
+            "Public model selected: retrieved document snippets may leave the intranet with this Ask. Answers remain assistive—open citations before relying on them.";
+          providerNotice.style.color = "var(--amber)";
+        } else {
+          providerNotice.textContent =
+            "Answers are assistive output grounded in uploaded documents. Always open the citation before relying on it.";
+          providerNotice.style.color = "";
+        }
+        if (askGatewayError && askKeywordNotice) {
+          const showInternalError = gatewayDown && !publicSelected;
+          askGatewayError.style.display = showInternalError ? "flex" : "none";
+          askKeywordNotice.style.display = gatewayDown && publicSelected ? "flex" : "none";
+        }
       }
+
+      function setGatewayDown(on) {
+        document.body.classList.toggle("gateway-down", on);
+        refreshProviderNotice();
+      }
+
       providerSelect.onchange = refreshProviderNotice;
+      gatewayToggle.onchange = () => setGatewayDown(gatewayToggle.checked);
+      refreshProviderNotice();
     </script>
   </body>
 </html>

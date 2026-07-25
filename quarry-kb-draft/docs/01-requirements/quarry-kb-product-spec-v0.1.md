@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 0.1.4 |
+| Version | 0.1.5 |
 | Status | Draft |
 | Layer | Requirements input (`docs/01-requirements/`) |
 | Owner | Product owner (TBD) |
@@ -23,6 +23,7 @@ This document defines what v0.1 must deliver. It is the upstream input for slice
 | 0.1.2 | Resolved D-04 (embedding via internal gateway API) and D-05 (OCR via gateway multimodal). Closed OQ-07 / OQ-08. |
 | 0.1.3 | Revised D-01: chat/completion may use the internal gateway **or** configured public OpenAI-compatible providers (e.g. DeepSeek). Embedding and OCR remain intranet-gateway-only. Documented the Ask-time data egress implication. |
 | 0.1.4 | Resolved OQ-10 as D-06: multiple public chat providers may be enabled; any authenticated user can switch the chat provider per Ask. |
+| 0.1.5 | Added D-07: per-surface degradation when the internal gateway is unavailable (Ask / Upload / Browse). |
 
 ---
 
@@ -98,6 +99,7 @@ These decisions are settled and constrain every downstream slice. Each requires 
 | D-04 | Embeddings are produced through the **internal gateway embedding API** (not a locally hosted embedding process on the Quarry host). | Vector dimension is dictated by the gateway embedding model; changing it requires a re-index migration. Compose does not need an on-host embedding container. |
 | D-05 | OCR for scanned/image pages is performed through the **internal gateway multimodal** capability (page images or PDFs sent to the gateway OCR/VLM path). | The parse adapter extracts pages, calls the gateway multimodal OCR endpoint, and never uses a public OCR SaaS or a separate on-host OCR stack in v0.1. Gateway latency and multimodal rate limits constrain NFR-04a. |
 | D-06 | **Multiple public chat providers** may be enabled at once, and **any authenticated user** (Admin / Editor / Viewer) may switch the chat provider on the Ask screen for each question. | Ask UI includes a provider/model selector listing all enabled providers. The Admin-configured default is preselected for new sessions; the user's last choice may be remembered in the browser/session. Provider credentials stay Admin-only—users only see display names. |
+| D-07 | When the **internal model gateway** is unavailable, the product **degrades by surface** instead of going fully offline: **Browse stays fully available**; **Upload still accepts files** but ingest may stall or fail with a clear reason; **Ask keeps history and keyword retrieval**, errors clearly when the selected chat provider is the down gateway (and invites switching to another enabled provider), and never fabricates an answer. | Downstream slices must implement the user-visible states in §6.4. No silent auto-failover of chat provider. Vector search and OCR/embedding ingest depend on the gateway and must surface degraded/failed states. |
 
 ### 3.1 Data-egress warning (Ask vs ingest)
 
@@ -119,6 +121,7 @@ If an Admin enables DeepSeek (or another public chat endpoint), department docum
 - Embedding model id + dimension are configuration values; changing them requires a documented reindex.
 - Multimodal OCR work is asynchronous and must not block interactive question answering.
 - Provider credentials are stored as secrets; never committed to Git or returned by APIs.
+- Internal-gateway outage must not take down Browse; see D-07 and §6.4 for Ask/Upload degradation.
 
 ## 4. Scope
 
@@ -138,6 +141,7 @@ If an Admin enables DeepSeek (or another public chat endpoint), department docum
 12. Personal session history (a user sees only their own sessions).
 13. Minimal admin surface: user list, role assignment, activate/deactivate, chat-provider settings.
 14. Minimal audit trail for upload, delete, reindex, role change, and chat-provider configuration changes.
+15. Documented degradation when the internal gateway is unavailable: Browse stays up; Upload accepts then fails ingest clearly; Ask errors or keyword-falls-back without silent provider switch (§6.4).
 
 ### 4.2 Out Of Scope (v0.1)
 
@@ -201,6 +205,9 @@ Requirement IDs are stable and should be referenced by downstream slice document
 | FR-18 | An Editor or Admin can delete a document; its chunks and embeddings are removed from retrieval. |
 | FR-19 | A user can view a document's metadata, parse mode (native text vs OCR), and a preview of its chunks. |
 | FR-20 | The knowledge list supports text search by title and filtering by status. |
+| FR-21 | Upload acceptance does not require the internal gateway to be healthy: valid files are stored and a document row is created even when embedding/OCR are unavailable. |
+| FR-22 | When ingest cannot complete because the gateway embedding or multimodal OCR path is unavailable, the document ends in `failed` (or remains visibly stalled in `parsing` with a timeout path to `failed`) with a human-readable reason such as "Internal gateway unavailable — retry / reindex later". |
+| FR-23 | Browse (knowledge list, document detail, chunk preview, already-indexed content) does not call the internal gateway and remains available during a gateway outage. |
 
 ### 5.3 Ask (Retrieval And Answering)
 
@@ -219,6 +226,9 @@ Requirement IDs are stable and should be referenced by downstream slice document
 | FR-40 | The Ask interface exposes only RAG mode in v0.1; Agent mode is visible but disabled and clearly labeled as later. |
 | FR-41 | Each assistant answer records which chat provider/model generated it (for transparency in the session UI and support debugging). |
 | FR-42 | When the selected provider is public, the Ask composer shows a persistent short notice that retrieved snippets may leave the intranet (in addition to the Admin enablement warning). |
+| FR-43 | If the selected chat provider is the internal gateway and that gateway is unavailable, Ask shows a clear error with retry and, when other enabled providers exist, a prompt to switch provider. The system must not silently auto-switch providers. |
+| FR-44 | If vector retrieval cannot run because the gateway embedding path is unavailable, Ask falls back to **keyword-only retrieval** and shows a short "semantic search unavailable" notice. If keyword retrieval also finds no basis, FR-35 applies. |
+| FR-45 | Session list, reopen, and read-only viewing of prior answers remain available during a gateway outage (no new successful answer is required for Browse-of-history). |
 
 ### 5.4 Administration And Audit
 
@@ -270,12 +280,64 @@ User question
 |---|---|
 | Knowledge base empty | Ask screen guides the user to ask an Editor to upload content |
 | No relevant chunks | Explicit "no basis" answer, no invented content |
-| Selected chat provider unavailable | Error banner with retry; question is not silently dropped |
-| Gateway embedding unavailable | Ingestion pauses or fails with a clear reason; Ask may still use keyword-only fallback if configured, otherwise returns a clear error |
+| Selected chat provider unavailable | Error banner with retry; question is not silently dropped; if other providers are enabled, invite the user to switch (no silent auto-switch) |
+| Gateway embedding unavailable | Ingest fails or times out to `failed` with a clear reason (FR-22); Ask uses keyword-only retrieval with a visible notice (FR-44) |
 | Gateway multimodal OCR failed / timed out | Document status `failed` (or partial failure reason); Editor can reindex when the gateway recovers |
 | Document parsing failed | Visible failure reason plus reindex action for Editors |
 | Permission denied | Non-destructive denial state, no partial data leakage |
 | Public chat provider misconfigured / invalid key | Clear Admin-facing and user-facing error; do not fall back silently to another provider without configuration |
+
+### 6.4 Internal-gateway degradation (user-visible)
+
+This section locks what users see when the **internal model gateway** is down or unreachable. "Gateway" here covers the intranet paths used for **chat (when selected)**, **embedding**, and **multimodal OCR**. Public chat providers are independent and may still work.
+
+#### 6.4.1 Per-surface summary
+
+| Surface | Depends on gateway? | Degradation strategy | User-visible outcome |
+|---|---|---|---|
+| **Browse** (knowledge list, document detail, chunk preview, session history) | No | **No degradation** for already-stored data | Screens load normally. Indexed documents and past answers remain readable. Optional non-blocking notice for Editors/Admins: "Internal gateway unavailable — new OCR/embedding ingest may fail." |
+| **Upload** | Yes for ingest completion (embed + OCR); **No** for accepting the file | **Accept then stall/fail** | Upload dialog still works. File is stored; document appears in the list as `queued` → `parsing`, then `failed` with reason if embed/OCR cannot complete. Editor can reindex after recovery. Native-text extract may finish locally, but indexing waits on embedding. Scanned PDFs fail at OCR. |
+| **Ask** (new question) | Partial: vector half of hybrid retrieval; chat only if Internal Gateway is selected | **Partial continue + explicit error** | See §6.4.2. Never invent an answer. Never silent provider failover. |
+
+#### 6.4.2 Ask detail (what the user sees)
+
+| Condition | What the user sees | What still works | What does not |
+|---|---|---|---|
+| Selected provider = **Internal Gateway**, gateway down | Error in the answer area: "Internal gateway is unavailable. Retry, or switch to another enabled model." Retry button + provider selector remain usable. | Session list; prior messages; switching to a public provider | New answer from the internal gateway |
+| Selected provider = **public**, gateway down (chat path OK) | Normal answer flow via the public provider. If embedding/vector path is also down: short notice "Semantic search unavailable — using keyword match only." Citations still required when chunks are found. | Ask with keyword retrieval + public chat; Browse | Vector similarity ranking until gateway recovers |
+| Selected provider = **public**, but that public provider is also down | Provider-specific error with retry; invite switch to another enabled provider | Browse; other providers if healthy | Answer from the broken provider |
+| Gateway down and **no other chat provider** enabled | Same internal-gateway error; no switch option. Copy may say "Ask is unavailable until the gateway recovers or an Admin enables another model." | Browse; Upload accept; session history | New cited answers |
+| Retrieval finds nothing (even keyword-only) | FR-35 "no basis" — not a gateway error | — | Fabricated answer |
+
+#### 6.4.3 Upload detail (what the user sees)
+
+| Step | Gateway down? | User-visible state |
+|---|---|---|
+| Choose files / validation | Irrelevant | Same as healthy: type/size errors only |
+| Confirm upload | Irrelevant | Success toast / document row created (`queued`) |
+| Native text extract | Usually local — still runs | Status `parsing` |
+| OCR (scanned pages) | Required | Stays `parsing` then `failed`: "Internal gateway multimodal OCR unavailable" |
+| Embedding | Required | Stays `parsing` then `failed`: "Internal gateway embedding unavailable" |
+| After recovery | — | Editor/Admin uses **Reindex** (no re-upload required) |
+
+Upload must not show a blocking "gateway down — cannot upload" that prevents storing the file. A soft banner on Knowledge for Editors is allowed: "Internal gateway unavailable — new documents may fail to index."
+
+#### 6.4.4 Browse detail (what the user sees)
+
+| Action | During gateway outage |
+|---|---|
+| Open Knowledge list / filter / search by title | Works |
+| Open document detail, chunk preview, parse mode, failure reason | Works |
+| Open citations from an old answer to a still-indexed document | Works |
+| Delete document / change roles / view audit (authorized users) | Works (local app + DB only) |
+| Reindex | Allowed to enqueue; will succeed only after gateway recovers (same failure reasons as upload if still down) |
+
+#### 6.4.5 Non-negotiables during outage
+
+1. Do not fabricate answers to hide a gateway failure.
+2. Do not silently switch the user's selected chat provider.
+3. Do not send embedding or OCR traffic to a public fallback.
+4. Do not wipe or hide already-indexed knowledge because the gateway is down.
 
 ---
 
@@ -305,7 +367,7 @@ Conceptual model only. Physical schema belongs to slice data-model documents.
 | NFR-04 | A typical native-text document (under 100 pages) reaches `indexed` within five minutes of upload. |
 | NFR-04a | A typical OCR document (under 50 pages of scanned content) reaches `indexed` within thirty minutes under normal gateway multimodal latency, without blocking Ask for other users. |
 | NFR-05 | The pilot deployment runs on a single intranet host using Docker Compose, with no on-host embedding or OCR containers in v0.1. Egress to public **chat** providers is allowed only when configured; embedding/OCR must not require public egress. |
-| NFR-06 | The system remains usable when the selected chat provider is temporarily unavailable: browsing knowledge and reading documents must still work. |
+| NFR-06 | When the internal gateway or the selected chat provider is temporarily unavailable, Browse remains fully usable; Upload still accepts files; Ask follows §6.4 (keyword-only retrieval when vector path is down; clear chat errors without silent provider failover). |
 | NFR-07 | Restart of the application must not lose uploaded documents, indexed chunks, or session history. |
 | NFR-08 | Backup must be possible by copying the database dump plus the upload volume. |
 | NFR-09 | Embedding model identity and vector dimension are configuration values; changing the embedding model requires a documented reindex of affected documents. |
@@ -354,6 +416,10 @@ v0.1 is accepted when a live demo on the pilot host satisfies all of the followi
 | AC-15 | Attempting to point embedding or OCR settings at a public URL is rejected. |
 | AC-16 | A Viewer can open Ask, switch between enabled chat providers, and complete a cited question with each selected provider. |
 | AC-17 | The answer UI shows which provider/model produced the reply; selecting a public provider shows the short egress notice on the composer. |
+| AC-18 | With the internal gateway unreachable and Internal Gateway selected on Ask, the user sees a clear unavailable error with retry and (if configured) a prompt to switch provider; no answer is fabricated and no silent provider switch occurs. |
+| AC-19 | With the internal gateway unreachable, Knowledge list and an already-indexed document detail remain fully readable. |
+| AC-20 | With the internal gateway unreachable, an Editor can still upload a valid file; the document appears in the list and either stays in a visible ingest state or reaches `failed` with a gateway-unavailable reason; after gateway recovery, reindex can complete without re-upload. |
+| AC-21 | With embedding unavailable but a public chat provider selected, Ask either answers using keyword-only retrieval with a visible semantic-search notice, or returns FR-35 when no keyword basis exists. |
 
 ---
 
@@ -384,6 +450,7 @@ Adoption signals to review after the pilot period. These are not acceptance gate
 | OQ-07 | Embeddings use the **internal gateway embedding API** | D-04 |
 | OQ-08 | OCR uses the **internal gateway multimodal** path | D-05 |
 | OQ-10 | Multiple public chat providers may be enabled; any authenticated user may switch provider on Ask | D-06 |
+| OQ-11 | Per-surface degradation when the internal gateway is down (Browse full / Upload accept-then-fail / Ask partial) | D-07 |
 
 ### 12.2 Still Open
 
@@ -394,7 +461,7 @@ Adoption signals to review after the pilot period. These are not acceptance gate
 | OQ-05 | Which retention rule applies to session history and audit entries? | Affects data model and later compliance requests |
 | OQ-09 | Exact internal-gateway base URL(s), default chat model id, embedding model id, multimodal OCR model/path, and rate-limit expectations | Needed for `.env.example` and adapter smoke tests |
 
-`knowledge-ingest`, `ask-rag`, and `chat-providers` may proceed to SDD design against D-01–D-06. Concrete endpoint identifiers (OQ-09) land in env/Admin setup without changing product scope.
+`knowledge-ingest`, `ask-rag`, and `chat-providers` may proceed to SDD design against D-01–D-07. Concrete endpoint identifiers (OQ-09) land in env/Admin setup without changing product scope.
 
 ---
 
@@ -406,8 +473,8 @@ Downstream slices derived from this specification. Each slice gets its own full 
 |---|---|---|---|
 | 1 | `repo-bootstrap` | Frontend shell, backend health endpoint, database and migration skeleton, Compose, env template for gateway chat/embedding/OCR settings | Enables all others |
 | 2 | `auth-password-jwt` | Login, session token, roles, account administration | FR-01 to FR-07, FR-50 to FR-51 |
-| 3 | `knowledge-ingest` | Upload, native parse + gateway multimodal OCR, chunk, gateway embedding, status, reindex, delete | FR-10 to FR-20, FR-14a–d, D-02 to D-05 |
-| 4 | `ask-rag` | Hybrid retrieval, cited answering via user-selected chat provider, sessions, no-basis behavior, provider label on answers | FR-30 to FR-42, D-01, D-06 |
+| 3 | `knowledge-ingest` | Upload, native parse + gateway multimodal OCR, chunk, gateway embedding, status, reindex, delete; upload-accept / ingest-fail during gateway outage | FR-10 to FR-23, FR-14a–d, D-02 to D-05, D-07 |
+| 4 | `ask-rag` | Hybrid retrieval, cited answering via user-selected chat provider, sessions, no-basis behavior, provider label, keyword-only fallback and chat errors on gateway outage | FR-30 to FR-45, D-01, D-06, D-07 |
 | 4a | `chat-providers` (may merge into auth or ask) | Admin CRUD for multiple chat providers, system default, public-egress warning; Ask selector for all users | FR-14c–j, FR-52, SEC-10/11, D-06 |
 | 5 | `audit-minimal` | Audit entries and Admin list view | FR-52 to FR-54 |
 
@@ -433,6 +500,6 @@ Not commitments; direction only.
 ## 15. Traceability Notes
 
 - Downstream slice requirements must reference the FR / NFR / SEC / AC / D identifiers used here.
-- Changes to scope in section 4, or reversal of D-01 through D-06, require updating this document before the affected slice is implemented.
+- Changes to scope in section 4, or reversal of D-01 through D-07, require updating this document before the affected slice is implemented.
 - Product boundary claims must stay consistent with `docs/00-context/product-positioning.md` and ADR-0002.
-- Destination repository should add ADRs for D-01–D-06 before `knowledge-ingest` / `ask-rag` implementation. D-01/D-06 must record that multiple public chat providers are allowed, users may switch on Ask, and Ask-time snippet egress is accepted when a public provider is selected.
+- Destination repository should add ADRs for D-01–D-07 before `knowledge-ingest` / `ask-rag` implementation. D-01/D-06 must record that multiple public chat providers are allowed, users may switch on Ask, and Ask-time snippet egress is accepted when a public provider is selected. D-07 must record the Browse / Upload / Ask degradation matrix in §6.4.

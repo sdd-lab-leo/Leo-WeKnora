@@ -23,7 +23,7 @@ cp -R quarry-kb-draft/docs/. /path/to/quarry-kb/docs/
 - Both files are English-only, matching the repository language rule.
 - Content is mock-only: no real company documents, names, or systems.
 
-## Platform Decisions Locked In Spec v0.1.4
+## Platform Decisions Locked In Spec v0.1.5
 
 | ID | Decision |
 |---|---|
@@ -33,6 +33,7 @@ cp -R quarry-kb-draft/docs/. /path/to/quarry-kb/docs/
 | D-04 | Embeddings via **internal gateway embedding API** |
 | D-05 | OCR via **internal gateway multimodal** |
 | D-06 | **Multiple public** chat providers may be enabled; **any authenticated user** can switch provider on Ask |
+| D-07 | Gateway down → **Browse full**; **Upload accept then fail ingest clearly**; **Ask** keyword-fallback / clear chat error (no silent provider switch) |
 
 ## Still Open
 
