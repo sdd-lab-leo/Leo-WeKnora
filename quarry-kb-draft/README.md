@@ -23,15 +23,16 @@ cp -R quarry-kb-draft/docs/. /path/to/quarry-kb/docs/
 - Both files are English-only, matching the repository language rule.
 - Content is mock-only: no real company documents, names, or systems.
 
-## Platform Decisions Locked In Spec v0.1.3
+## Platform Decisions Locked In Spec v0.1.4
 
 | ID | Decision |
 |---|---|
-| D-01 | Chat via **configurable** OpenAI-compatible providers: internal gateway **and** public (e.g. DeepSeek). Ask-time snippets may leave intranet if public chat is enabled. |
+| D-01 | Chat via **configurable** OpenAI-compatible providers: internal gateway **and** public (e.g. DeepSeek). Ask-time snippets may leave intranet if public chat is selected. |
 | D-02 | Scanned PDFs in scope; **OCR required** |
 | D-03 | Document text **must not** go to any external **embedding** service |
 | D-04 | Embeddings via **internal gateway embedding API** |
 | D-05 | OCR via **internal gateway multimodal** |
+| D-06 | **Multiple public** chat providers may be enabled; **any authenticated user** can switch provider on Ask |
 
 ## Still Open
 
@@ -39,4 +40,3 @@ cp -R quarry-kb-draft/docs/. /path/to/quarry-kb/docs/
 - `OQ-04` UI component library
 - `OQ-05` retention
 - `OQ-09` exact gateway URLs / model ids / multimodal path
-- `OQ-10` which public chat providers are pre-approved; whether users can switch providers or only Admin sets default

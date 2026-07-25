@@ -593,6 +593,7 @@
 
               <div class="answer">
                 <div class="answer-body">
+                  <div class="small muted" style="margin-bottom:8px">Answered with · Internal Gateway · default</div>
                   <p>
                     A change request for the payment module is approved by the module owner first,
                     then by the release manager during the weekly change window
@@ -675,15 +676,25 @@
 
           <div class="composer">
             <div class="composer-inner">
-              <div class="mode-switch">
-                <button class="on">RAG</button>
-                <button disabled>Agent <span class="tag">later</span></button>
+              <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px">
+                <div class="mode-switch">
+                  <button class="on">RAG</button>
+                  <button disabled>Agent <span class="tag">later</span></button>
+                </div>
+                <label class="small muted" for="provider-select" style="display:flex;align-items:center;gap:8px">
+                  Model
+                  <select class="input" id="provider-select" style="width:auto;min-width:200px;padding:5px 8px">
+                    <option selected>Internal Gateway · default</option>
+                    <option>DeepSeek · deepseek-chat</option>
+                    <option>Public Provider B · gpt-compatible</option>
+                  </select>
+                </label>
               </div>
               <div class="composer-box">
                 <textarea placeholder="Ask a question about department documents…"></textarea>
                 <button class="btn btn-primary">Ask</button>
               </div>
-              <div class="small muted" style="margin-top: 8px">
+              <div class="small muted" style="margin-top: 8px" id="provider-notice">
                 Answers are assistive output grounded in uploaded documents. Always open the citation
                 before relying on it.
               </div>
@@ -938,6 +949,53 @@
                 </table>
               </div>
 
+              <div class="section-title">Chat providers</div>
+              <div class="card">
+                <div class="small muted" style="margin-bottom:12px">
+                  Multiple public providers may be enabled at once. Users select among enabled
+                  display names on Ask; API keys stay Admin-only. Enabling a public endpoint shows
+                  an Ask-time data-egress warning.
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Display name</th>
+                      <th>Kind</th>
+                      <th>Model</th>
+                      <th>Status</th>
+                      <th>Default</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td class="doc-title">Internal Gateway</td>
+                      <td>Intranet</td>
+                      <td class="muted">default</td>
+                      <td><span class="pill pill-indexed">Enabled</span></td>
+                      <td>Yes</td>
+                    </tr>
+                    <tr>
+                      <td class="doc-title">DeepSeek</td>
+                      <td>Public</td>
+                      <td class="muted">deepseek-chat</td>
+                      <td><span class="pill pill-indexed">Enabled</span></td>
+                      <td>No</td>
+                    </tr>
+                    <tr>
+                      <td class="doc-title">Public Provider B</td>
+                      <td>Public</td>
+                      <td class="muted">gpt-compatible</td>
+                      <td><span class="pill pill-indexed">Enabled</span></td>
+                      <td>No</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+                  <button class="btn btn-primary">Add provider</button>
+                  <button class="btn btn-ghost">Edit selected</button>
+                </div>
+              </div>
+
               <div class="section-title">Recent audit entries</div>
               <div class="card">
                 <table>
@@ -950,6 +1008,12 @@
                     </tr>
                   </thead>
                   <tbody>
+                    <tr>
+                      <td class="nowrap muted">2026-07-25 11:02</td>
+                      <td>admin</td>
+                      <td>chat_provider.enable</td>
+                      <td>Public Provider B (public · egress warning ack)</td>
+                    </tr>
                     <tr>
                       <td class="nowrap muted">2026-07-25 10:41</td>
                       <td>editor.a</td>
@@ -1001,7 +1065,7 @@
         ask: "Ask",
         knowledge: "Knowledge",
         document: "Document detail",
-        admin: "Admin · Users",
+        admin: "Admin · Users & providers",
       };
 
       let role = "Admin";
@@ -1113,6 +1177,17 @@
           showPage("ask");
         };
       });
+
+      const providerSelect = $("#provider-select");
+      const providerNotice = $("#provider-notice");
+      function refreshProviderNotice() {
+        const publicSelected = providerSelect.selectedIndex > 0;
+        providerNotice.textContent = publicSelected
+          ? "Public model selected: retrieved document snippets may leave the intranet with this Ask. Answers remain assistive—open citations before relying on them."
+          : "Answers are assistive output grounded in uploaded documents. Always open the citation before relying on it.";
+        providerNotice.style.color = publicSelected ? "var(--amber)" : "";
+      }
+      providerSelect.onchange = refreshProviderNotice;
     </script>
   </body>
 </html>

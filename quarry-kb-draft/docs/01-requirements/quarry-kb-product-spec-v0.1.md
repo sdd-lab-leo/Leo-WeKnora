@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 0.1.3 |
+| Version | 0.1.4 |
 | Status | Draft |
 | Layer | Requirements input (`docs/01-requirements/`) |
 | Owner | Product owner (TBD) |
@@ -22,6 +22,7 @@ This document defines what v0.1 must deliver. It is the upstream input for slice
 | 0.1.1 | Resolved D-01 (internal chat gateway), D-02 (OCR in scope), D-03 (no external embedding). |
 | 0.1.2 | Resolved D-04 (embedding via internal gateway API) and D-05 (OCR via gateway multimodal). Closed OQ-07 / OQ-08. |
 | 0.1.3 | Revised D-01: chat/completion may use the internal gateway **or** configured public OpenAI-compatible providers (e.g. DeepSeek). Embedding and OCR remain intranet-gateway-only. Documented the Ask-time data egress implication. |
+| 0.1.4 | Resolved OQ-10 as D-06: multiple public chat providers may be enabled; any authenticated user can switch the chat provider per Ask. |
 
 ---
 
@@ -70,6 +71,7 @@ Quarry KB v0.1 is not a general chatbot, not a document management system, not a
 |---|---|---|---|
 | Log in | Yes | Yes | Yes |
 | Ask questions and view citations | Yes | Yes | Yes |
+| Switch chat provider / model on Ask | Yes | Yes | Yes |
 | View own session history | Yes | Yes | Yes |
 | Browse knowledge list | Yes | Yes | Yes |
 | Open document detail and chunks | Yes | Yes | Read-only |
@@ -77,6 +79,7 @@ Quarry KB v0.1 is not a general chatbot, not a document management system, not a
 | Delete documents | Yes | Yes | No |
 | Reindex documents | Yes | Yes | No |
 | Manage users and roles | Yes | No | No |
+| Configure chat providers (incl. public DeepSeek etc.) | Yes | No | No |
 | View minimal audit records | Yes | No | No |
 
 Role vocabulary is shared by frontend and backend (`Admin`, `Editor`, `Viewer`) as defined in the standards documents.
@@ -89,11 +92,12 @@ These decisions are settled and constrain every downstream slice. Each requires 
 
 | ID | Decision | Consequence |
 |---|---|---|
-| D-01 | Chat/completion uses a **configurable OpenAI-compatible provider list**. Supported destinations include the company **internal model gateway** and **public providers** such as DeepSeek (and other Admin-configured OpenAI-compatible endpoints). | The chat adapter is provider-agnostic (`base_url` + API key + model id). An Admin can register multiple chat providers and choose a default. Enabling a public chat provider means Ask-time prompts—including retrieved document snippets—may leave the intranet. |
+| D-01 | Chat/completion uses a **configurable OpenAI-compatible provider list**. Supported destinations include the company **internal model gateway** and **public providers** such as DeepSeek (and other Admin-configured OpenAI-compatible endpoints). | The chat adapter is provider-agnostic (`base_url` + API key + model id). An Admin can register providers and choose a system default. Enabling a public chat provider means Ask-time prompts—including retrieved document snippets—may leave the intranet. |
 | D-02 | Scanned and image-based documents **are in scope**; OCR is required. | Ingestion needs an OCR-capable parse path, a longer processing budget, per-document parse-mode reporting, and quality expectations that differ from native text. |
 | D-03 | Document text **must not** be sent to any external embedding service. | All **embedding** traffic stays inside the intranet perimeter. This does **not** by itself prevent Ask-time snippet egress when a public chat provider is selected (see D-01 warning below). |
 | D-04 | Embeddings are produced through the **internal gateway embedding API** (not a locally hosted embedding process on the Quarry host). | Vector dimension is dictated by the gateway embedding model; changing it requires a re-index migration. Compose does not need an on-host embedding container. |
 | D-05 | OCR for scanned/image pages is performed through the **internal gateway multimodal** capability (page images or PDFs sent to the gateway OCR/VLM path). | The parse adapter extracts pages, calls the gateway multimodal OCR endpoint, and never uses a public OCR SaaS or a separate on-host OCR stack in v0.1. Gateway latency and multimodal rate limits constrain NFR-04a. |
+| D-06 | **Multiple public chat providers** may be enabled at once, and **any authenticated user** (Admin / Editor / Viewer) may switch the chat provider on the Ask screen for each question. | Ask UI includes a provider/model selector listing all enabled providers. The Admin-configured default is preselected for new sessions; the user's last choice may be remembered in the browser/session. Provider credentials stay Admin-only—users only see display names. |
 
 ### 3.1 Data-egress warning (Ask vs ingest)
 
@@ -108,8 +112,10 @@ If an Admin enables DeepSeek (or another public chat endpoint), department docum
 ### 3.2 Derived Constraints
 
 - Embedding and OCR remain intranet-gateway-only even when public chat is enabled.
-- Chat may egress to the public internet only when an Admin explicitly configures and selects a public provider.
-- The recommended default chat provider for the pilot is the internal gateway; public providers are opt-in.
+- Chat may egress to the public internet when an Admin enables a public provider **and** a user selects it (or it is the default).
+- Multiple public providers may be enabled concurrently (D-06); there is no DeepSeek-only limit.
+- The recommended system default for the pilot remains the internal gateway; public providers are Admin opt-in, then user-selectable.
+- Users never see or edit API keys; they only choose among enabled provider display names.
 - Embedding model id + dimension are configuration values; changing them requires a documented reindex.
 - Multimodal OCR work is asynchronous and must not block interactive question answering.
 - Provider credentials are stored as secrets; never committed to Git or returned by APIs.
@@ -124,13 +130,14 @@ If an Admin enables DeepSeek (or another public chat endpoint), department docum
 4. Ingestion pipeline with OCR for pages that lack an extractable text layer; status visible as queued, parsing, indexed, or failed.
 5. Chunking plus embedding storage in PostgreSQL with pgvector; embeddings from the **internal gateway embedding API** only.
 6. Chat/completion via configurable OpenAI-compatible providers (internal gateway and/or public providers such as DeepSeek); embedding and multimodal OCR remain on the **internal gateway** only.
-7. Admin configuration of chat providers (base URL, API key, model id, enable/disable, default provider), with an explicit warning when a public provider is enabled.
-8. Hybrid retrieval (keyword plus vector) with fused ranking.
-9. Answer generation that must include citations to retrieved chunks.
-10. Source inspection: open the cited snippet and its parent document.
-11. Personal session history (a user sees only their own sessions).
-12. Minimal admin surface: user list, role assignment, activate/deactivate, chat-provider settings.
-13. Minimal audit trail for upload, delete, reindex, role change, and chat-provider configuration changes.
+7. Admin configuration of **multiple** chat providers (base URL, API key, model id, enable/disable, system default), with an explicit warning when a public provider is enabled.
+8. Ask-time chat provider switcher for all authenticated users (lists enabled providers; remembers last choice when practical).
+9. Hybrid retrieval (keyword plus vector) with fused ranking.
+10. Answer generation that must include citations to retrieved chunks.
+11. Source inspection: open the cited snippet and its parent document.
+12. Personal session history (a user sees only their own sessions).
+13. Minimal admin surface: user list, role assignment, activate/deactivate, chat-provider settings.
+14. Minimal audit trail for upload, delete, reindex, role change, and chat-provider configuration changes.
 
 ### 4.2 Out Of Scope (v0.1)
 
@@ -147,7 +154,7 @@ If an Admin enables DeepSeek (or another public chat endpoint), department docum
 | Object storage backend (MinIO/S3) | Local disk volume is sufficient for the pilot |
 | Streaming token output | Nice to have; not an acceptance blocker for v0.1 |
 | Shared or team-visible sessions | Privacy expectations unclear in pilot |
-| Per-user free-form entry of arbitrary public model endpoints | v0.1 limits provider setup to Admin-configured entries |
+| Per-user free-form entry of arbitrary public model endpoints / API keys | v0.1 limits provider **setup** to Admin-configured entries; users may only **select** among enabled providers |
 
 Deferring an item does not mean designing against it. Public **chat** providers are allowed under D-01; public **embedding/OCR** remain prohibited.
 
@@ -182,9 +189,12 @@ Requirement IDs are stable and should be referenced by downstream slice document
 | FR-14b | Embeddings are produced only via the **internal gateway embedding API**; the system never calls a public embedding API and does not run a local embedding server in v0.1. |
 | FR-14c | Chat/completion calls are issued through the configured OpenAI-compatible chat provider (internal gateway and/or public providers such as DeepSeek). |
 | FR-14d | Chat provider entries, embedding gateway settings, and multimodal OCR path are configuration values. SDKs must not hard-code a single vendor; public chat is opt-in via Admin configuration. |
-| FR-14e | An Admin can create, update, disable, and select the default chat provider (`name`, `base_url`, `api_key`, `model_id`). |
+| FR-14e | An Admin can create, update, disable, and select the system-default chat provider (`name`, `base_url`, `api_key`, `model_id`). Multiple public providers may be enabled at the same time. |
 | FR-14f | When saving or enabling a chat provider whose `base_url` is outside the company intranet allowlist, the Admin UI must show a warning that Ask-time retrieved document snippets may leave the intranet. |
 | FR-14g | Embedding and OCR configuration accept only intranet gateway endpoints; attempts to point them at public providers are rejected. |
+| FR-14h | Any authenticated user can select an enabled chat provider on the Ask screen before sending a question; the selection applies to that Ask (and may persist as the user's preference). |
+| FR-14i | The Ask provider selector shows only enabled providers' display names (and optional model label). It never exposes API keys or editable base URLs to non-Admin users. |
+| FR-14j | If the user has no stored preference, the system default provider is preselected. If the previously selected provider was disabled, the UI falls back to the system default and notifies the user. |
 | FR-15 | Document status is observable as `queued`, `parsing`, `indexed`, or `failed`. |
 | FR-16 | A failed document shows a human-readable failure reason (including OCR/parse failures). |
 | FR-17 | An Editor or Admin can reindex a document without re-uploading it. |
@@ -207,6 +217,8 @@ Requirement IDs are stable and should be referenced by downstream slice document
 | FR-38 | A user can see, reopen, and rename their own sessions. |
 | FR-39 | A user cannot read another user's sessions. |
 | FR-40 | The Ask interface exposes only RAG mode in v0.1; Agent mode is visible but disabled and clearly labeled as later. |
+| FR-41 | Each assistant answer records which chat provider/model generated it (for transparency in the session UI and support debugging). |
+| FR-42 | When the selected provider is public, the Ask composer shows a persistent short notice that retrieved snippets may leave the intranet (in addition to the Admin enablement warning). |
 
 ### 5.4 Administration And Audit
 
@@ -336,10 +348,12 @@ v0.1 is accepted when a live demo on the pilot host satisfies all of the followi
 | AC-09 | Audit list shows entries for upload, delete, reindex, and role change performed during the demo. |
 | AC-10 | The system is deployed and started from the documented Compose flow on a single host. |
 | AC-11 | With the default (internal-gateway) chat provider, Ask traffic targets the internal gateway; embedding and OCR traffic always target the internal gateway. |
-| AC-12 | An Admin can configure a public OpenAI-compatible chat provider (e.g. DeepSeek), set it as default or selectable, and successfully complete one cited Ask against it. |
+| AC-12 | An Admin can configure **at least two** public OpenAI-compatible chat providers (e.g. DeepSeek and another), keep both enabled, and set one system default. |
 | AC-13 | Configuration documents the gateway embedding model id and the gateway multimodal OCR path used in the pilot. |
-| AC-14 | Enabling a public chat provider shows the Ask-time data-egress warning; no public key exists for embedding or OCR endpoints. |
+| AC-14 | Enabling a public chat provider shows the Admin Ask-time data-egress warning; no public key exists for embedding or OCR endpoints. |
 | AC-15 | Attempting to point embedding or OCR settings at a public URL is rejected. |
+| AC-16 | A Viewer can open Ask, switch between enabled chat providers, and complete a cited question with each selected provider. |
+| AC-17 | The answer UI shows which provider/model produced the reply; selecting a public provider shows the short egress notice on the composer. |
 
 ---
 
@@ -369,6 +383,7 @@ Adoption signals to review after the pilot period. These are not acceptance gate
 | OQ-06 | Department document text **must not** be sent to any external embedding service | D-03 |
 | OQ-07 | Embeddings use the **internal gateway embedding API** | D-04 |
 | OQ-08 | OCR uses the **internal gateway multimodal** path | D-05 |
+| OQ-10 | Multiple public chat providers may be enabled; any authenticated user may switch provider on Ask | D-06 |
 
 ### 12.2 Still Open
 
@@ -378,9 +393,8 @@ Adoption signals to review after the pilot period. These are not acceptance gate
 | OQ-04 | Is there a designated company UI component library for intranet apps? | Frontend standards require an ADR before adopting a new kit |
 | OQ-05 | Which retention rule applies to session history and audit entries? | Affects data model and later compliance requests |
 | OQ-09 | Exact internal-gateway base URL(s), default chat model id, embedding model id, multimodal OCR model/path, and rate-limit expectations | Needed for `.env.example` and adapter smoke tests |
-| OQ-10 | Which public chat providers are approved for the pilot by default (DeepSeek only, or a short allowlist), and whether end users may switch providers or only Admins set the system default | Affects Admin UX and Ask UI |
 
-`knowledge-ingest` and `ask-rag` may proceed to SDD design against D-01–D-05. Concrete endpoint identifiers (OQ-09) and the pilot allowlist/switch policy (OQ-10) can land during provider-settings design without changing the core decision that public chat is allowed.
+`knowledge-ingest`, `ask-rag`, and `chat-providers` may proceed to SDD design against D-01–D-06. Concrete endpoint identifiers (OQ-09) land in env/Admin setup without changing product scope.
 
 ---
 
@@ -393,8 +407,8 @@ Downstream slices derived from this specification. Each slice gets its own full 
 | 1 | `repo-bootstrap` | Frontend shell, backend health endpoint, database and migration skeleton, Compose, env template for gateway chat/embedding/OCR settings | Enables all others |
 | 2 | `auth-password-jwt` | Login, session token, roles, account administration | FR-01 to FR-07, FR-50 to FR-51 |
 | 3 | `knowledge-ingest` | Upload, native parse + gateway multimodal OCR, chunk, gateway embedding, status, reindex, delete | FR-10 to FR-20, FR-14a–d, D-02 to D-05 |
-| 4 | `ask-rag` | Hybrid retrieval, cited answering via selected chat provider, sessions, no-basis behavior | FR-30 to FR-40, D-01 |
-| 4a | `chat-providers` (may merge into auth or ask) | Admin CRUD for chat providers, default selection, public-egress warning | FR-14c–g, FR-52, SEC-10/11 |
+| 4 | `ask-rag` | Hybrid retrieval, cited answering via user-selected chat provider, sessions, no-basis behavior, provider label on answers | FR-30 to FR-42, D-01, D-06 |
+| 4a | `chat-providers` (may merge into auth or ask) | Admin CRUD for multiple chat providers, system default, public-egress warning; Ask selector for all users | FR-14c–j, FR-52, SEC-10/11, D-06 |
 | 5 | `audit-minimal` | Audit entries and Admin list view | FR-52 to FR-54 |
 
 Suggested sequencing rationale: authentication before ingestion so uploads have an owner, and ingestion before answering so retrieval has content. Gateway multimodal OCR and gateway embedding are part of `knowledge-ingest`, not separate slices.
@@ -419,6 +433,6 @@ Not commitments; direction only.
 ## 15. Traceability Notes
 
 - Downstream slice requirements must reference the FR / NFR / SEC / AC / D identifiers used here.
-- Changes to scope in section 4, or reversal of D-01 through D-05, require updating this document before the affected slice is implemented.
+- Changes to scope in section 4, or reversal of D-01 through D-06, require updating this document before the affected slice is implemented.
 - Product boundary claims must stay consistent with `docs/00-context/product-positioning.md` and ADR-0002.
-- Destination repository should add ADRs for D-01–D-05 before `knowledge-ingest` / `ask-rag` implementation. D-01 must explicitly record that public chat providers are allowed and that Ask-time snippet egress is accepted when they are enabled.
+- Destination repository should add ADRs for D-01–D-06 before `knowledge-ingest` / `ask-rag` implementation. D-01/D-06 must record that multiple public chat providers are allowed, users may switch on Ask, and Ask-time snippet egress is accepted when a public provider is selected.
